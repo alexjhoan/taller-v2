@@ -1,0 +1,39 @@
+{
+  "schema": "https://opencode.ai/config.json",
+  "default_agent": "coordinator",
+  "agents": {
+    "coordinator": {
+      "description": "Coordina y delega tareas entre subagentes",
+      "tools": ["subagent", "read", "write", "edit", "shell", "grep", "glob"]
+    },
+    "planner": {
+      "description": "Redacta specs, planes y tareas",
+      "tools": ["read", "write", "edit", "grep", "glob"]
+    },
+    "implementer": {
+      "description": "Implementa tareas de un plan aprobado",
+      "tools": ["read", "write", "edit", "shell", "grep", "glob"]
+    },
+    "reviewer": {
+      "description": "Revisa specs y valida implementaciones",
+      "tools": ["read", "grep", "glob"]
+    },
+    "tester": {
+      "description": "Ejecuta tests y verifica tipos",
+      "tools": ["shell", "read"]
+    }
+  },
+  "mcp": {
+    "chrome-devtools": {
+      "type": "local",
+      "command": ["npx", "-y", "chrome-devtools-mcp@latest", "--no-usage-statistics"]
+    },
+    "context7": {
+      "type": "remote",
+      "url": "https://mcp.context7.com/mcp",
+      "headers": {
+        "CONTEXT7_API_KEY": "ctx7sk-927a1c3b-ae22-40b3-a62d-0395ee6b403b"
+      }
+    }
+  }
+}
