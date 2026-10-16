@@ -14,7 +14,6 @@ interface LoginResponseBody {
   id: number;
   token: string;
   first_name: string;
-  /** Opcional: el backend puede no devolverlo en el login */
   last_name?: string;
   nickname: string;
   role: "admin" | "mechanic";
@@ -68,7 +67,7 @@ export default function LoginPage() {
       const { id, token, first_name, last_name, role } = response.body;
 
       // login() del contexto persiste la sesión: guarda el JWT y los datos del
-      // usuario (id, first_name, last_name, role) en cookies para poder
+      // usuario (id, firstName, lastName, role) en cookies para poder
       // restaurar el nombre real y el rol al refrescar (F5).
       login(
         {
@@ -80,7 +79,8 @@ export default function LoginPage() {
         token,
       );
 
-      enqueueSnackbar(`Bienvenido, ${first_name}`, { variant: "success" });
+      const fullName = last_name ? `${first_name} ${last_name}` : first_name;
+      enqueueSnackbar(`Bienvenido, ${fullName}`, { variant: "success" });
 
       // Redirigir según el rol
       if (role === "mechanic") {

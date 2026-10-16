@@ -18,6 +18,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - Sidebar responsive (xs:425px, drawer + topbar con hamburguesa).
 - Reloj TopBar: HH:MM (sin segundos).
 - Tests: 82 tests en `tests/*.test.mjs`, `node --test`.
+- **Audit trail**: `pages/admin/order-log.tsx` con timeline vertical, hook `useOrderAuditLog`, tipos en `src/types/audit.ts`. Botón "Ver Log de Cambios" en AdminOrderDetail.
 - `.env.local`: `NEXT_PUBLIC_API_BASE_URL=http://localhost`, `NEXT_PUBLIC_PORTAL_URL=http://localhost:3000`.
 - `npm run build` pasa. `npm run typecheck` pasa. `npm run lint` no (ESLint no configurado, preexistente).
 
@@ -28,6 +29,9 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - `allowedDevOrigins` detecta IPs LAN en runtime (Next 14 no admite `192.168.*`).
 - Subagentes V2: `.opencode/agents/*.md`. Fallback si rate limit: reintentar 1 vez y luego hacer manual.
 - Badge status clickeable (OrderStatusButton) en vez de select nativo — mejor UX en móvil.
+- **Código limpio**: eliminar imports no usados, variables muertas y código huérfano. Regla permanente: si no se usa, se quita.
+- **Anchos unificados**: Recepción `max-w-2xl`, Admin/Técnico `max-w-4xl`, Portal `max-w-md` (móvil-first).
+- **Títulos responsive**: `text-xl sm:text-2xl` en <425px (Recepción, Portal, Admin, Técnico, History).
 - **EvidenceUploader**: cámara con `getUserMedia` (no `capture="environment"`) da control total, pide permisos correctamente, funciona en iOS Safari. Preview en modal, captura canvas→blob→File→addFiles(). Un solo input file para galería/drag-drop. Admin y técnico comparten componente.
 - **EvidenceGallery**: carrusel sin dependencias externas (ligero, accesible). Auto-play 5s, pause on hover, thumbnails strip, modal lightbox con grid thumbnails y navegación completa.
 

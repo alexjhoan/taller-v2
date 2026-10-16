@@ -1,3 +1,4 @@
+import { useRouter } from 'next/router';
 import {
   ArrowLeft,
   Car,
@@ -6,6 +7,7 @@ import {
   ClipboardList,
   Package,
   CheckCircle2,
+  Clock,
 } from 'lucide-react';
 import { CustomCard } from '@/components/ui/CustomCard';
 import { CustomButton } from '@/components/ui/CustomButton';
@@ -20,6 +22,7 @@ interface AdminOrderDetailReadOnlyProps {
 }
 
 export function AdminOrderDetailReadOnly({ order, onBack }: AdminOrderDetailReadOnlyProps) {
+  const router = useRouter();
   const checklist = Array.isArray(order.checklist) ? order.checklist : [];
   const parts = Array.isArray(order.parts) ? order.parts : [];
   const completedCount = checklist.filter((i) => i.completed).length;
@@ -267,6 +270,14 @@ export function AdminOrderDetailReadOnly({ order, onBack }: AdminOrderDetailRead
           </div>
         </CustomCard>
       )}
+      {/* Ver historial de cambios */}
+      <CustomButton
+        variant='secondary'
+        leftIcon={<Clock className='h-4 w-4' />}
+        onClick={() => router.push(`/admin/order-log?orderId=${order.id}`)}
+      >
+        Ver Log de Cambios
+      </CustomButton>
     </div>
   );
 }

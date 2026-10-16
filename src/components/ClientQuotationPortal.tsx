@@ -3,9 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   CheckCircle2,
   Circle,
-  XCircle,
   MessageCircle,
-  Clock,
   Wrench,
   Camera,
   FileText,
@@ -13,8 +11,6 @@ import {
   Loader2,
   Car,
   User,
-  Gauge,
-  Fuel,
   ClipboardList,
   Package,
 } from "lucide-react";
@@ -118,6 +114,10 @@ interface PublicOrderResponse {
   budget: BudgetItem[];
 }
 
+// --- Flujo de aceptación (3 modales) ---
+
+type AcceptanceState = "idle" | "loading" | "success" | "error";
+
 // --- Constantes ---
 
 const STEPS = [
@@ -141,6 +141,7 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
   const { buildPartInquiryUrl, buildWhatsAppUrl } = useWhatsApp();
   const [decisions, setDecisions] = useState<Record<string, CustomerDecision>>({});
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [acceptanceState, setAcceptanceState] = useState<AcceptanceState>("idle");
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["publicOrder", token],
@@ -331,23 +332,49 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
 
   const handleConfirmAcceptance = async () => {
     await handleSubmitDecisions();
+    setConfirmDialogOpen(false);
+    setAcceptanceState("loading");
+
+    // Bloquear cierre/recarga de página durante el procesamiento
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
     try {
       await api.patch(
         endpoints.publicOrder(token),
         { budget_accepted: 1, status: "approved" },
         { skipUpdatedBy: true },
       );
+      setAcceptanceState("success");
     } catch {
-      // Error no bloqueante — las decisiones ya se enviaron
+      setAcceptanceState("error");
+    } finally {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
     }
-    setConfirmDialogOpen(false);
+  };
+
+  const handleCloseSuccess = () => {
+    setAcceptanceState("idle");
     refetch();
+  };
+
+  const handleCloseError = () => {
+    setAcceptanceState("idle");
+  };
+
+  const handleWhatsAppError = () => {
+    const message = `Hola, ocurrió un error al aceptar el presupuesto de mi vehículo ${order?.vehicle_plate}. Mi nombre es: ${order?.customer_name}.`;
+    const url = buildWhatsAppUrl("573001234567", message);
+    window.open(url, "_blank", "noopener,noreferrer");
   };
 
   // Estado de carga
   if (isLoading) {
     return (
-      <div className='flex min-h-screen items-center justify-center bg-surface-base'>
+      <div className='flex min-h-dvh items-center justify-center bg-surface-base'>
         <div className='text-center'>
           <Loader2 className='mx-auto h-8 w-8 animate-spin text-brand-600' />
           <p className='mt-3 text-sm text-slate-500'>Cargando información de su vehículo...</p>
@@ -359,7 +386,7 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
   // Estado de error
   if (error || !order) {
     return (
-      <div className='flex min-h-screen items-center justify-center bg-surface-base p-4'>
+      <div className='flex min-h-dvh items-center justify-center bg-surface-base p-4'>
         <div className='w-full max-w-md text-center'>
           <div className='mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-red-50'>
             <AlertCircle className='h-8 w-8 text-red-500' />
@@ -384,7 +411,7 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
     <div className='mx-auto max-w-md space-y-6 px-4 pb-32 sm:px-6'>
       {/* Header */}
       <div>
-        <h1 className='text-2xl font-extrabold tracking-tight text-slate-900'>Estado de tu Vehículo</h1>
+        <h1 className='text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900'>Estado de tu Vehículo</h1>
         <p className='mt-1 text-sm text-slate-500'>
           {order.vehicle_make} {order.vehicle_model} · {order.vehicle_plate}
         </p>
@@ -789,6 +816,79 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
           </CustomButton>
           <CustomButton className='flex-1' onClick={handleConfirmAcceptance}>
             Confirmar Aceptación
+          </CustomButton>
+        </div>
+      </CustomDialog>
+
+      {/* --- Paso 1: Modal de Loader (procesando) --- */}
+      <CustomDialog
+        open={acceptanceState === "loading"}
+        onClose={() => {}}
+        title='Procesando'
+        maxWidth='sm'
+        hideCloseButton
+        disableBackdropClose
+        disableEscapeClose
+      >
+        <div className='flex flex-col items-center py-6 text-center'>
+          <Loader2 className='h-16 w-16 animate-spin text-brand-600' />
+          <p className='mt-4 text-lg font-bold text-slate-800'>Procesando aceptación...</p>
+          <p className='mt-1 text-sm text-slate-500'>Su presupuesto ha sido aceptado</p>
+        </div>
+      </CustomDialog>
+
+      {/* --- Paso 2: Modal de Éxito --- */}
+      <CustomDialog
+        open={acceptanceState === "success"}
+        onClose={handleCloseSuccess}
+        title='¡Presupuesto aceptado!'
+        maxWidth='sm'
+        hideCloseButton
+        disableEscapeClose
+      >
+        <div className='flex flex-col items-center py-4 text-center'>
+          <div className='flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50'>
+            <CheckCircle2 className='h-16 w-16 text-emerald-500' />
+          </div>
+          <p className='mt-4 text-sm text-slate-600'>
+            Su presupuesto ha sido procesado exitosamente. Gracias por su confianza.
+          </p>
+        </div>
+        <div className='mt-6'>
+          <CustomButton className='w-full' onClick={handleCloseSuccess}>
+            Cerrar
+          </CustomButton>
+        </div>
+      </CustomDialog>
+
+      {/* --- Paso 3: Modal de Error --- */}
+      <CustomDialog
+        open={acceptanceState === "error"}
+        onClose={handleCloseError}
+        title='Error al procesar'
+        maxWidth='sm'
+        hideCloseButton
+        disableEscapeClose
+      >
+        <div className='flex flex-col items-center py-4 text-center'>
+          <div className='flex h-16 w-16 items-center justify-center rounded-full bg-red-50'>
+            <AlertCircle className='h-16 w-16 text-red-500' />
+          </div>
+          <p className='mt-4 text-sm text-slate-600'>
+            Ocurrió un error al aceptar su presupuesto. Por favor intente más tarde o notifique por
+            WhatsApp al administrador.
+          </p>
+        </div>
+        <div className='mt-6 space-y-3'>
+          <CustomButton
+            className='w-full'
+            leftIcon={<MessageCircle className='h-4 w-4' />}
+            onClick={handleWhatsAppError}
+          >
+            Notificar por WhatsApp
+          </CustomButton>
+          <CustomButton variant='secondary' className='w-full' onClick={handleCloseError}>
+            Cerrar
           </CustomButton>
         </div>
       </CustomDialog>

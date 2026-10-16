@@ -1,36 +1,38 @@
-import { useState, useEffect } from 'react';
-import { TechnicianOrderList } from '@/components/TechnicianOrderList';
-import { TechnicianOrderDetail } from '@/components/TechnicianOrderDetail';
-import { WorkOrder } from '@/hooks/useWorkOrders';
+import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
+import { TechnicianOrderList } from "@/components/TechnicianOrderList";
+import { TechnicianOrderDetail } from "@/components/TechnicianOrderDetail";
+import { WorkOrder, useWorkOrders } from "@/hooks/useWorkOrders";
 
 export function TechnicianOrderView() {
+  const router = useRouter();
   const [selectedOrder, setSelectedOrder] = useState<WorkOrder | null>(null);
-
-  // Manejar navegación atrás del navegador / gesto swipe
-  useEffect(() => {
-    const handlePopState = () => {
-      if (selectedOrder) {
-        setSelectedOrder(null);
-      }
-    };
-
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, [selectedOrder]);
+  const { data: workOrders } = useWorkOrders();
 
   const handleSelectOrder = (order: WorkOrder) => {
     setSelectedOrder(order);
-    // Push a dummy state to enable back button navigation
-    window.history.pushState({ detail: "order", id: order.id }, "", "");
+    // Sincronizar URL para que router.back() funcione correctamente
+    router.push(`/technician/order?selectedOrderId=${order.id}`, undefined, { shallow: true });
   };
 
   const handleBack = () => {
     setSelectedOrder(null);
-    window.history.back();
+    router.back();
   };
 
+  // Restaurar selección desde URL (cuando se vuelve de order-log o navegación atrás)
+  useEffect(() => {
+    const { selectedOrderId } = router.query;
+    if (selectedOrderId && workOrders) {
+      const order = workOrders.find((o) => o.id == Number(selectedOrderId));
+      if (order) setSelectedOrder(order);
+    } else if (!selectedOrderId) {
+      setSelectedOrder(null);
+    }
+  }, [router.query, workOrders]);
+
   return (
-    <div className="mx-auto max-w-4xl space-y-6 px-4 pb-8 sm:px-6">
+    <div className='mx-auto max-w-4xl space-y-6 px-4 pb-8 sm:px-6'>
       {selectedOrder === null ? (
         <TechnicianOrderList onSelectOrder={handleSelectOrder} />
       ) : (

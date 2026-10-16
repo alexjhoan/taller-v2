@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
 import { useSnackbar } from "notistack";
 import {
   ArrowLeft,
   CheckCircle2,
+  Clock,
   Plus,
   ShieldAlert,
   Package,
@@ -50,6 +52,7 @@ interface TechnicianOrderDetailProps {
 }
 
 export function TechnicianOrderDetail({ order, onBack }: TechnicianOrderDetailProps) {
+  const router = useRouter();
   const apiClient = useApiClient();
   const { enqueueSnackbar } = useSnackbar();
   const { user } = useUserContext();
@@ -332,7 +335,7 @@ export function TechnicianOrderDetail({ order, onBack }: TechnicianOrderDetailPr
   const progress = checklist.length > 0 ? Math.round((completedCount / checklist.length) * 100) : 0;
 
   return (
-    <div className='space-y-6'>
+    <div className='mx-auto max-w-4xl space-y-6 px-4 sm:px-6'>
       {/* Header
           Móvil (<850px, breakpoint wide): fila 1 [Volver] ... [Orden # + fecha],
           fila 2 badge clickeable (OrderStatusButton → modal).
@@ -342,7 +345,7 @@ export function TechnicianOrderDetail({ order, onBack }: TechnicianOrderDetailPr
           Volver
         </CustomButton>
         <div className='order-1 min-w-0 text-right wide:order-none wide:text-left'>
-          <h1 className='text-2xl font-extrabold tracking-tight text-slate-900'>Orden #{order.id}</h1>
+          <h1 className='text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900'>Orden #{order.id}</h1>
           <p className='text-sm text-slate-500'>Creada: {new Date(order.created_at).toLocaleDateString("es-CO")}</p>
         </div>
         {/* Estado: PATCH inmediato (solo si la orden es del técnico).
@@ -601,6 +604,17 @@ export function TechnicianOrderDetail({ order, onBack }: TechnicianOrderDetailPr
       )}
 
       <EvidenceUploader orderId={order.id} />
+
+      {/* Ver historial de cambios */}
+      <CustomButton
+        variant='secondary'
+        leftIcon={<Clock className='h-4 w-4' />}
+        onClick={() => {
+          router.push(`/admin/order-log?orderId=${order.id}`);
+        }}
+      >
+        Ver Log de Cambios
+      </CustomButton>
 
       {/* Comentario de entrega/cancelación (solo si la orden ya lo tiene) */}
       {withdrawalComment && withdrawalComment.trim() !== "" && (

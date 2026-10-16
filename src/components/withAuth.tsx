@@ -38,7 +38,7 @@ export function withAuth<P extends object>(WrappedComponent: ComponentType<P>, o
 
     if (!isAuthenticated) {
       return (
-        <div className='flex min-h-screen items-center justify-center bg-surface-base'>
+        <div className='flex min-h-dvh items-center justify-center bg-surface-base'>
           <div className='animate-pulse text-sm text-slate-400'>Cargando...</div>
         </div>
       );

@@ -57,7 +57,7 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
         updated_by: JSON.stringify({
           id: userForUpdate.id,
           firstName: userForUpdate.firstName,
-          lastName: userForUpdate.lastName,
+          lastName: userForUpdate.lastName ?? "",
           role: userForUpdate.role,
         }),
       };
@@ -137,6 +137,9 @@ export const endpoints = {
 
   // Evidencias
   evidence: (orderId: number) => `/api/orders/${orderId}/evidence`,
+
+  // Log de cambios (audit trail)
+  orderAuditLog: (orderId: number) => `/api/orders/${orderId}/audit-log`,
 
   // Portal público
   publicOrder: (token: string) => `/api/public/order/${token}`,

@@ -4,10 +4,6 @@ import { useUserContext } from "@/context/UserContext";
 import { generateShortUid } from "@/utils/uid";
 import {
   Camera,
-  Mic,
-  Square,
-  Pause,
-  Play,
   Plus,
   Trash2,
   Car,
@@ -15,12 +11,10 @@ import {
   Package,
   ClipboardList,
   ShieldAlert,
-  AlertTriangle,
   CheckCircle2,
   Wrench,
   User,
   FileText,
-  Palette,
 } from "lucide-react";
 import { CustomCard } from "@/components/ui/CustomCard";
 import { CustomInput } from "@/components/ui/CustomInput";
@@ -375,10 +369,10 @@ export function ReceptionCheckinForm() {
   // --- Render ---
 
   return (
-    <div className='mx-auto max-w-md space-y-6 px-4 pb-8 sm:px-6'>
+    <div className='mx-auto max-w-2xl space-y-6 px-4 pb-8 sm:px-6'>
       {/* Header */}
       <div>
-        <h1 className='text-2xl font-extrabold tracking-tight text-slate-900 pt-4'>Recepción de Vehículo</h1>
+        <h1 className='text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900 pt-4'>Recepción de Vehículo</h1>
       </div>
 
       <form

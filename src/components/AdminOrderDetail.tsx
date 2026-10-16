@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSnackbar } from "notistack";
 import {
@@ -19,6 +20,7 @@ import {
   Send,
   Wrench,
   Image,
+  Clock,
 } from "lucide-react";
 import { CustomCard } from "@/components/ui/CustomCard";
 import { CustomButton } from "@/components/ui/CustomButton";
@@ -101,6 +103,7 @@ interface AdminOrderDetailProps {
 }
 
 export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
+  const router = useRouter();
   const apiClient = useApiClient();
   const queryClient = useQueryClient();
   const { enqueueSnackbar } = useSnackbar();
@@ -526,7 +529,7 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
         </CustomButton>
         <div className='order-1 min-w-0 text-right wide:order-none wide:text-left'>
           <div className='flex items-center justify-end gap-2 wide:justify-start'>
-            <h1 className='text-2xl font-extrabold tracking-tight text-slate-900'>Orden #{order.id}</h1>
+            <h1 className='text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900'>Orden #{order.id}</h1>
           </div>
           <p className='text-sm text-slate-500'>Creada: {new Date(order.created_at).toLocaleDateString("es-CO")}</p>
         </div>
@@ -1043,6 +1046,17 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
           Guardar Cambios
         </CustomButton>
       </div>
+
+      {/* Ver historial de cambios */}
+      <CustomButton
+        variant='secondary'
+        leftIcon={<Clock className='h-4 w-4' />}
+        onClick={() => {
+          router.push(`/admin/order-log?orderId=${order.id}`);
+        }}
+      >
+        Ver Log de Cambios
+      </CustomButton>
 
       {/* Modal de repuesto */}
       <CustomDialog

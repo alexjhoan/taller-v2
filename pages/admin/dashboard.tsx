@@ -43,38 +43,52 @@ function AdminDashboardPage() {
     refetchUsers();
   }, [refetchOrders, refetchUsers]);
 
-  // Manejar navegación atrás del navegador / gesto swipe
-  useEffect(() => {
-    const handlePopState = () => {
-      if (selectedOrder || selectedUser) {
-        setSelectedOrder(null);
-        setSelectedUser(null);
-      }
-    };
-
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, [selectedOrder, selectedUser]);
-
   // Push history state cuando se selecciona una orden o usuario
   const handleSelectOrder = (order: WorkOrder) => {
     setSelectedOrder(order);
     setSelectedUser(null);
-    // Push a dummy state to enable back button navigation
-    window.history.pushState({ detail: "order", id: order.id }, "", "");
+    // Sincronizar URL para que router.back() funcione correctamente
+    router.push(`/admin/dashboard?selectedOrderId=${order.id}`, undefined, { shallow: true });
   };
 
   const handleSelectUser = (user: User) => {
     setSelectedUser(user);
     setSelectedOrder(null);
-    window.history.pushState({ detail: "user", id: user.id }, "", "");
+    router.push(`/admin/dashboard?selectedUserId=${user.id}`, undefined, { shallow: true });
   };
 
   const handleBackFromDetail = () => {
     setSelectedOrder(null);
     setSelectedUser(null);
-    window.history.back();
+    router.back();
   };
+
+  // Restaurar selección desde URL (cuando se vuelve de order-log o navegación atrás)
+  useEffect(() => {
+    const { selectedOrderId, selectedUserId } = router.query;
+    console.log(selectedOrderId);
+    console.log(workOrders);
+    if (selectedOrderId && workOrders) {
+      console.log("pasa");
+      const order = workOrders.find((o) => o.id == Number(selectedOrderId));
+      console.log(order);
+      if (order) {
+        console.log(order);
+        setSelectedOrder(order);
+        setSelectedUser(null);
+      }
+    } else if (selectedUserId && users) {
+      const user = users.find((u) => u.id == Number(selectedUserId));
+      if (user) {
+        setSelectedUser(user);
+        setSelectedOrder(null);
+      }
+    } else if (!selectedOrderId && !selectedUserId) {
+      // Si no hay query params, limpiar selección (navegación atrás natural)
+      setSelectedOrder(null);
+      setSelectedUser(null);
+    }
+  }, [router.query, workOrders, users]);
 
   // Si hay una orden seleccionada, mostrar el detalle
   if (selectedOrder !== null) {
@@ -103,7 +117,9 @@ function AdminDashboardPage() {
       <div className='mx-auto max-w-4xl space-y-6 p-6 pb-8'>
         {/* Header */}
         <div>
-          <h1 className='text-2xl font-extrabold tracking-tight text-slate-900'>Dashboard del Administrador</h1>
+          <h1 className='text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900'>
+            Dashboard del Administrador
+          </h1>
           <p className='mt-1 text-sm text-slate-500'>Gestiona órdenes de trabajo y usuarios</p>
         </div>
 

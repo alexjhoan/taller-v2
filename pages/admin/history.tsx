@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
 import { FileText, Search, RefreshCw, Loader2, AlertCircle, Calendar } from "lucide-react";
 import { withAuth } from "@/components/withAuth";
 import { CustomCard } from "@/components/ui/CustomCard";
@@ -12,6 +13,7 @@ import { AdminOrderDetailReadOnly } from "@/components/AdminOrderDetailReadOnly"
 import { OrderCard } from "@/components/OrderCard";
 
 function AdminHistoryPage() {
+  const router = useRouter();
   const [selectedOrder, setSelectedOrder] = useState<WorkOrder | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [fecha, setFecha] = useState("");
@@ -23,6 +25,22 @@ function AdminHistoryPage() {
   useEffect(() => {
     refetch();
   }, [refetch]);
+
+  // Sincronizar URL cuando se selecciona una orden (para router.back() desde order-log)
+  useEffect(() => {
+    if (selectedOrder) {
+      router.push(`/admin/history?selectedOrderId=${selectedOrder.id}`, undefined, { shallow: true });
+    }
+  }, [selectedOrder]);
+
+  // Restaurar selección desde URL (cuando se vuelve de order-log)
+  useEffect(() => {
+    const { selectedOrderId } = router.query;
+    if (selectedOrderId && orders) {
+      const order = orders.find((o) => o.id === Number(selectedOrderId));
+      if (order) setSelectedOrder(order);
+    }
+  }, [router.query, orders]);
 
   const filteredOrders =
     orders?.filter(
@@ -47,7 +65,7 @@ function AdminHistoryPage() {
       <div className='mx-auto max-w-4xl space-y-6 p-6 pb-8'>
         {/* Header */}
         <div>
-          <h1 className='text-2xl font-extrabold tracking-tight text-slate-900'>Historial de Órdenes Entregadas</h1>
+          <h1 className='text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900'>Historial de Órdenes Entregadas</h1>
           <p className='mt-1 text-sm text-slate-500'>Consulta el historial completo de órdenes entregadas</p>
         </div>
 

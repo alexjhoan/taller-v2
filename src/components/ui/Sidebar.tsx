@@ -1,9 +1,9 @@
-import { useEffect } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/router';
-import { ChevronLeft, ChevronRight, LogOut, Wrench, X } from 'lucide-react';
-import { useUserContext } from '@/context/UserContext';
-import { navigationItems } from '@/utils/navigation';
+import { useEffect } from "react";
+import Link from "next/link";
+import { useRouter } from "next/router";
+import { ChevronLeft, ChevronRight, LogOut, Wrench, X } from "lucide-react";
+import { useUserContext } from "@/context/UserContext";
+import { navigationItems } from "@/utils/navigation";
 
 interface SidebarProps {
   /** Estado compartido con Layout (≥425px). */
@@ -14,21 +14,16 @@ interface SidebarProps {
   onCloseDrawer: () => void;
 }
 
-export function Sidebar({
-  isCollapsed,
-  onToggleCollapse,
-  isDrawerOpen,
-  onCloseDrawer,
-}: SidebarProps) {
+export function Sidebar({ isCollapsed, onToggleCollapse, isDrawerOpen, onCloseDrawer }: SidebarProps) {
   const router = useRouter();
   const { user, logout } = useUserContext();
 
   // Cerrar el drawer al navegar (incluye navegación programática, p. ej. logout)
   useEffect(() => {
     const handleRouteChange = () => onCloseDrawer();
-    router.events.on('routeChangeStart', handleRouteChange);
+    router.events.on("routeChangeStart", handleRouteChange);
     return () => {
-      router.events.off('routeChangeStart', handleRouteChange);
+      router.events.off("routeChangeStart", handleRouteChange);
     };
   }, [router.events, onCloseDrawer]);
 
@@ -36,76 +31,66 @@ export function Sidebar({
   useEffect(() => {
     if (!isDrawerOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onCloseDrawer();
+      if (event.key === "Escape") onCloseDrawer();
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isDrawerOpen, onCloseDrawer]);
 
   const handleLogout = () => {
     logout();
-    router.replace('/login');
+    router.replace("/login");
   };
 
-  const filteredItems = navigationItems.filter(
-    (item) => !item.adminOnly || user?.role === 'admin'
-  );
+  const filteredItems = navigationItems.filter((item) => !item.adminOnly || user?.role === "admin");
 
   const itemClasses = (isActive: boolean) =>
-    `flex items-center py-2 transition-all ${
-      isCollapsed ? 'justify-center px-1' : 'gap-2.5 px-2.5'
-    } rounded-xl ${
-      isActive
-        ? 'bg-brand-50 text-brand-700'
-        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'
+    `flex items-center py-2 transition-all ${isCollapsed ? "justify-center px-1" : "gap-2.5 px-2.5"} rounded-xl ${
+      isActive ? "bg-brand-50 text-brand-700" : "text-slate-600 hover:bg-slate-50 hover:text-slate-800"
     }`;
 
   return (
     <aside
-      id="sidebar-navigation"
-      aria-label="Menú de navegación"
-      className={`fixed left-0 top-0 z-40 flex h-screen flex-col border-r border-slate-200 bg-white transition-all duration-300 ${
-        isDrawerOpen ? 'translate-x-0' : 'max-xs:-translate-x-full max-xs:invisible'
-      } ${isCollapsed ? 'w-56 xs:w-14' : 'w-56'}`}
+      id='sidebar-navigation'
+      aria-label='Menú de navegación'
+      className={`fixed left-0 top-0 z-40 flex h-dvh flex-col border-r border-slate-200 bg-white transition-all duration-300 ${
+        isDrawerOpen ? "translate-x-0" : "max-xs:-translate-x-full max-xs:invisible"
+      } ${isCollapsed ? "w-56 xs:w-14" : "w-56"}`}
     >
       {/* Header */}
-      <div className="flex h-14 items-center justify-between border-b border-slate-100 px-3">
+      <div className='flex h-14 items-center justify-between border-b border-slate-100 px-3'>
         {!isCollapsed && (
-          <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-600">
-              <Wrench className="h-4 w-4 text-white" />
+          <div className='flex items-center gap-2'>
+            <div className='flex h-7 w-7 items-center justify-center rounded-lg bg-brand-600'>
+              <Wrench className='h-4 w-4 text-white' />
             </div>
-            <span className="text-[13px] font-bold text-slate-800">Mecaflow</span>
+            <span className='text-[13px] font-bold text-slate-800'>Mecaflow</span>
           </div>
         )}
-        <div className="ml-auto flex items-center gap-1">
+        <div className='ml-auto flex items-center gap-1'>
           {/* Cerrar drawer (solo <425px) */}
           <button
-            type="button"
+            type='button'
             onClick={onCloseDrawer}
-            aria-label="Cerrar menú"
-            className="hidden max-xs:flex rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+            aria-label='Cerrar menú'
+            className='hidden max-xs:flex rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600'
           >
-            <X className="h-5 w-5" />
+            <X className='h-5 w-5' />
           </button>
           {/* Colapsar/expandir (solo ≥425px) */}
           <button
-            type="button"
+            type='button'
             onClick={onToggleCollapse}
-            aria-label={isCollapsed ? 'Expandir menú' : 'Colapsar menú'}
-            className="flex max-xs:hidden rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+            aria-label={isCollapsed ? "Expandir menú" : "Colapsar menú"}
+            className='flex max-xs:hidden rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600'
           >
-            {isCollapsed ? (
-              <ChevronRight className="h-5 w-5" />
-            ) : (
-              <ChevronLeft className="h-5 w-5" />
-            )}
+            {isCollapsed ? <ChevronRight className='h-5 w-5' /> : <ChevronLeft className='h-5 w-5' />}
           </button>
         </div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-1 overflow-y-auto p-2.5">
+      <nav className='flex-1 space-y-1 overflow-y-auto p-2.5'>
         {filteredItems.map((item) => {
           const isActive = router.pathname === item.href;
           const Icon = item.icon;
@@ -120,15 +105,15 @@ export function Sidebar({
             >
               <div
                 className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
-                  isActive ? 'bg-brand-100' : 'bg-slate-100'
+                  isActive ? "bg-brand-100" : "bg-slate-100"
                 }`}
               >
-                <Icon className={`h-4 w-4 ${isActive ? 'text-brand-600' : 'text-slate-500'}`} />
+                <Icon className={`h-4 w-4 ${isActive ? "text-brand-600" : "text-slate-500"}`} />
               </div>
               {!isCollapsed && (
-                <div className="min-w-0">
-                  <p className="truncate text-[13px] font-semibold">{item.label}</p>
-                  <p className="truncate text-[11px] text-slate-400">{item.description}</p>
+                <div className='min-w-0'>
+                  <p className='truncate text-[13px] font-semibold'>{item.label}</p>
+                  <p className='truncate text-[11px] text-slate-400'>{item.description}</p>
                 </div>
               )}
             </Link>
@@ -137,19 +122,19 @@ export function Sidebar({
       </nav>
 
       {/* Footer */}
-      <div className="border-t border-slate-100 p-2.5">
+      <div className='border-t border-slate-100 p-2.5'>
         <button
-          type="button"
+          type='button'
           onClick={handleLogout}
           className={`flex w-full items-center rounded-xl py-2 text-slate-600 transition-colors hover:bg-red-50 hover:text-red-600 ${
-            isCollapsed ? 'justify-center px-1' : 'gap-2.5 px-2.5'
+            isCollapsed ? "justify-center px-1" : "gap-2.5 px-2.5"
           }`}
-          title={isCollapsed ? 'Cerrar Sesión' : undefined}
+          title={isCollapsed ? "Cerrar Sesión" : undefined}
         >
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100">
-            <LogOut className="h-4 w-4 text-slate-500" />
+          <div className='flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100'>
+            <LogOut className='h-4 w-4 text-slate-500' />
           </div>
-          {!isCollapsed && <span className="text-[13px] font-semibold">Cerrar Sesión</span>}
+          {!isCollapsed && <span className='text-[13px] font-semibold'>Cerrar Sesión</span>}
         </button>
       </div>
     </aside>

@@ -34,7 +34,7 @@ export function Layout({ children }: LayoutProps) {
   }, []);
 
   return (
-    <div className='flex min-h-screen bg-surface-base'>
+    <div className='flex min-h-dvh bg-surface-base'>
       <Sidebar
         isCollapsed={isCollapsed}
         onToggleCollapse={handleToggleCollapse}

@@ -7,6 +7,9 @@ interface CustomDialogProps {
   title?: string;
   children: ReactNode;
   maxWidth?: 'sm' | 'md' | 'lg' | 'xl';
+  hideCloseButton?: boolean;
+  disableBackdropClose?: boolean;
+  disableEscapeClose?: boolean;
 }
 
 const maxWidthClasses: Record<string, string> = {
@@ -22,6 +25,9 @@ export function CustomDialog({
   title,
   children,
   maxWidth = 'md',
+  hideCloseButton = false,
+  disableBackdropClose = false,
+  disableEscapeClose = false,
 }: CustomDialogProps) {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -35,7 +41,9 @@ export function CustomDialog({
   useEffect(() => {
     if (open) {
       document.body.style.overflow = 'hidden';
-      document.addEventListener('keydown', handleKeyDown);
+      if (!disableEscapeClose) {
+        document.addEventListener('keydown', handleKeyDown);
+      }
     } else {
       document.body.style.overflow = '';
     }
@@ -43,7 +51,7 @@ export function CustomDialog({
       document.body.style.overflow = '';
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [open, handleKeyDown]);
+  }, [open, handleKeyDown, disableEscapeClose]);
 
   if (!open) return null;
 
@@ -52,7 +60,7 @@ export function CustomDialog({
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={disableBackdropClose ? undefined : onClose}
       />
 
       {/* Dialog */}
@@ -63,12 +71,14 @@ export function CustomDialog({
         {title && (
           <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
             <h3 className="text-lg font-bold text-slate-800">{title}</h3>
-            <button
-              onClick={onClose}
-              className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
-            >
-              <X className="h-5 w-5" />
-            </button>
+            {!hideCloseButton && (
+              <button
+                onClick={onClose}
+                className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            )}
           </div>
         )}
 
