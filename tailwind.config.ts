@@ -7,6 +7,12 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      screens: {
+        xs: '425px',
+        // Breakpoint del header del detalle de orden: por debajo (móvil)
+        // se apila en filas y el estado se elige con botón + modal.
+        wide: '850px',
+      },
       colors: {
         brand: {
           50: '#eff6ff',

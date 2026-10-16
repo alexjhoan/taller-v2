@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
-import { api, endpoints } from '@/services/api';
+import { useQuery } from "@tanstack/react-query";
+import { api, endpoints } from "@/services/api";
+import { toNumericId } from "@/utils/ids";
 
 export interface ChecklistItem {
   id: string;
@@ -39,10 +40,12 @@ export interface WorkOrder {
   finished_at: string | null;
   withdrawal_comment: string | null;
   created_by: number;
+  assigned_user_id: number | null;
   created_at: string;
   updated_at: string;
   checklist?: ChecklistItem[] | string;
   parts?: PartItem[] | string;
+  evidence?: string[];
 }
 
 interface ApiResponse<T> {
@@ -53,16 +56,33 @@ interface ApiResponse<T> {
 }
 
 export function parseWorkOrder(order: WorkOrder): WorkOrder {
+  // Una fila con JSON corrupto NO debe tumbar la lista completa:
+  // si JSON.parse lanza, .map(parseWorkOrder) revienta, React Query
+  // marca error y el dashboard entero muestra "Error al cargar órdenes".
+  const safeParse = <T>(value: unknown, fallback: T): T => {
+    if (typeof value !== "string") return value as T;
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      console.warn(`JSON corrupto en orden ${order.id}, usando []`);
+      return fallback;
+    }
+  };
+
   return {
     ...order,
-    checklist: typeof order.checklist === 'string' ? JSON.parse(order.checklist) : order.checklist,
-    parts: typeof order.parts === 'string' ? JSON.parse(order.parts) : order.parts,
+    // El backend puede devolver assigned_user_id como string ("3");
+    // normalizarlo aquí hace que usersMap.get() y el filtro del técnico funcionen.
+    assigned_user_id: toNumericId(order.assigned_user_id),
+    checklist: safeParse<ChecklistItem[]>(order.checklist, []),
+    parts: safeParse<PartItem[]>(order.parts, []),
+    evidence: safeParse<string[]>(order.evidence, []),
   };
 }
 
 export function useWorkOrders() {
   return useQuery({
-    queryKey: ['work_orders'],
+    queryKey: ["work_orders"],
     queryFn: async () => {
       const response = await api.get<ApiResponse<WorkOrder[]>>(endpoints.orders);
       return response.body.map(parseWorkOrder);

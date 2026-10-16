@@ -1,14 +1,12 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
-import { useCookies } from "react-cookie";
 import { useSnackbar } from "notistack";
-import { Wrench, Mail, Lock, AlertCircle, Loader2 } from "lucide-react";
+import { Wrench, Mail, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { CustomCard } from "@/components/ui/CustomCard";
 import { CustomInput } from "@/components/ui/CustomInput";
 import { CustomButton } from "@/components/ui/CustomButton";
-import { api, endpoints, setApiToken } from "@/services/api";
+import { api, endpoints } from "@/services/api";
 import { useUserContext } from "@/context/UserContext";
-import { AUTH_COOKIE_NAME } from "@/utils/const";
 
 // --- Tipos ---
 
@@ -16,8 +14,10 @@ interface LoginResponseBody {
   id: number;
   token: string;
   first_name: string;
+  /** Opcional: el backend puede no devolverlo en el login */
+  last_name?: string;
   nickname: string;
-  role: 'admin' | 'mechanic';
+  role: "admin" | "mechanic";
 }
 
 interface LoginResponse {
@@ -36,8 +36,7 @@ interface LoginFormData {
 export default function LoginPage() {
   const router = useRouter();
   const { enqueueSnackbar } = useSnackbar();
-  const [cookies, setCookie] = useCookies([AUTH_COOKIE_NAME]);
-  const { isAuthenticated, login } = useUserContext();
+  const { isAuthenticated, user, login } = useUserContext();
 
   const [formData, setFormData] = useState<LoginFormData>({
     email: "",
@@ -45,13 +44,14 @@ export default function LoginPage() {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
-  // Redirigir si ya está autenticado
+  // Redirigir si ya está autenticado (por rol, igual que handleSubmit)
   useEffect(() => {
     if (isAuthenticated) {
-      router.replace("/");
+      router.replace(user?.role === "mechanic" ? "/technician/order" : "/admin/dashboard");
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, user, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,61 +59,66 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
+      // El backend recibe el valor en `email` (acepta usuario o correo)
       const response = await api.post<LoginResponse>(endpoints.login, {
-        email: formData.email,
+        email: formData.email.trim(),
         password: formData.password,
       });
 
-      const { id, token, first_name, role } = response.body;
+      const { id, token, first_name, last_name, role } = response.body;
 
-      // Guardar token en cookie (httpOnly=false para que React pueda leerlo si es necesario)
-      setCookie(AUTH_COOKIE_NAME, token, {
-        path: "/",
-        maxAge: 60 * 60 * 24 * 7, // 7 días
-        sameSite: "strict",
-      });
-
-      // Guardar token en el cliente API para futuras peticiones
-      setApiToken(token);
-
-      // Actualizar contexto de usuario con el role del backend
+      // login() del contexto persiste la sesión: guarda el JWT y los datos del
+      // usuario (id, first_name, last_name, role) en cookies para poder
+      // restaurar el nombre real y el rol al refrescar (F5).
       login(
         {
           id,
           firstName: first_name,
+          ...(last_name ? { lastName: last_name } : {}),
           role,
         },
         token,
       );
 
       enqueueSnackbar(`Bienvenido, ${first_name}`, { variant: "success" });
-      
+
       // Redirigir según el rol
-      if (role === 'mechanic') {
+      if (role === "mechanic") {
         router.replace("/technician/order");
       } else {
-        router.replace("/");
+        // El admin entra a su panel de control
+        router.replace("/admin/dashboard");
       }
     } catch (error: unknown) {
-      const apiError = error as { status?: number; statusText?: string };
+      const apiError = error as { status?: number; statusText?: string; body?: { statusText?: string } };
+      const name = error instanceof Error ? error.name : "Error";
+      const status = apiError.status ? ` ${apiError.status}` : "";
+      const detail =
+        (typeof apiError.body === "object" && apiError.body && "statusText" in apiError.body
+          ? (apiError.body as { statusText: string }).statusText
+          : null) ||
+        apiError.statusText ||
+        (error instanceof Error ? error.message : String(error));
 
       if (apiError.status === 503) {
         setError("Sin conexión al servidor. Verifica tu red.");
         enqueueSnackbar("Sin conexión al servidor", { variant: "warning" });
       } else if (apiError.status === 401 || apiError.status === 422) {
-        setError("Credenciales inválidas. Verifica tu email y contraseña.");
-        enqueueSnackbar("Credenciales inválidas", { variant: "error" });
+        setError("Credenciales inválidas. Verifica tu usuario y contraseña.");
+        enqueueSnackbar(`[${name}${status}] ${detail}`, { variant: "error" });
       } else {
         setError("Error al iniciar sesión. Intenta de nuevo.");
-        enqueueSnackbar("Error al iniciar sesión", { variant: "error" });
+        enqueueSnackbar(`[${name}${status}] ${detail}`, { variant: "error" });
       }
+      // Log completo para depuración (dev tools / consola)
+      console.error("[login]", { name, status: apiError.status, detail }, error);
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className='flex min-h-screen items-center justify-center bg-surface-base p-4'>
+    <div className='flex min-h-[100dvh] items-center justify-center bg-surface-base p-4'>
       <div className='w-full max-w-md'>
         {/* Logo y título */}
         <div className='mb-8 text-center'>
@@ -135,15 +140,16 @@ export default function LoginPage() {
               </div>
             )}
 
-            {/* Email */}
+            {/* Usuario o Email */}
             <div className='relative'>
               <CustomInput
-                label='Email'
+                label='Usuario o Email'
                 name='email'
                 type='text'
                 value={formData.email}
                 onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
                 placeholder='admin@example.com'
+                autoComplete='nickname'
                 required
               />
               <Mail className='absolute right-3 top-9 h-4 w-4 text-slate-400' />
@@ -154,13 +160,22 @@ export default function LoginPage() {
               <CustomInput
                 label='Contraseña'
                 name='password'
-                type='password'
+                type={showPassword ? "text" : "password"}
                 value={formData.password}
                 onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
                 placeholder='••••••••'
+                autoComplete='current-password'
+                className='pr-11'
                 required
               />
-              <Lock className='absolute right-3 top-9 h-4 w-4 text-slate-400' />
+              <button
+                type='button'
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? "Ocultar contraseña" : "Ver contraseña"}
+                className='absolute right-3 top-9 flex h-5 w-5 items-center justify-center text-slate-400 transition-colors hover:text-slate-600'
+              >
+                {showPassword ? <EyeOff className='h-4 w-4' /> : <Eye className='h-4 w-4' />}
+              </button>
             </div>
 
             {/* Botón de login */}

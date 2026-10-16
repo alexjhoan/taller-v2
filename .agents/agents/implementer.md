@@ -36,4 +36,3 @@ Devuelve:
 2. Archivos modificados.
 3. Resultado de node --test.
 4. Cualquier decisión que el plan no cubría.
-@explore ¿dónde y cómo se calcula la racha en este proyecto? 

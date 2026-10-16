@@ -1,4 +1,4 @@
-import { ReactNode, useEffect } from 'react';
+import { ReactNode, useEffect, useCallback } from 'react';
 import { X } from 'lucide-react';
 
 interface CustomDialogProps {
@@ -23,16 +23,27 @@ export function CustomDialog({
   children,
   maxWidth = 'md',
 }: CustomDialogProps) {
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    },
+    [onClose]
+  );
+
   useEffect(() => {
     if (open) {
       document.body.style.overflow = 'hidden';
+      document.addEventListener('keydown', handleKeyDown);
     } else {
       document.body.style.overflow = '';
     }
     return () => {
       document.body.style.overflow = '';
+      document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [open]);
+  }, [open, handleKeyDown]);
 
   if (!open) return null;
 

@@ -9,6 +9,13 @@
 export const AUTH_COOKIE_NAME = 'bkBtM0NvMGsmMw';
 
 /**
+ * Cookie con los datos del usuario (JSON) escrita al hacer login.
+ * Se guarda junto al JWT para restaurar nombre y rol en un refresco (F5)
+ * sin depender del payload del token. Misma vigencia que AUTH_COOKIE_NAME.
+ */
+export const SESSION_USER_COOKIE_NAME = 'bkBtM0NvMGsmMw_u';
+
+/**
  * Clave en localStorage para versión de la app.
  * Se usa para detectar cambios y forzar recarga.
  */

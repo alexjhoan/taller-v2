@@ -1,5 +1,7 @@
+import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, endpoints } from '@/services/api';
+import { toNumericId } from '@/utils/ids';
 
 export interface User {
   id: number;
@@ -28,6 +30,25 @@ export function useUsers() {
     },
     staleTime: 1000 * 60 * 5,
   });
+}
+
+/**
+ * Mapa id → User para match O(1) con assigned_user_id.
+ * React Query ya cachea la respuesta (staleTime 5 min), así que
+ * funciona como un "contexto" de usuarios sin estado extra ni IndexedDB.
+ */
+export function useUsersMap() {
+  const { data: users } = useUsers();
+  return useMemo(() => {
+    const map = new Map<number, User>();
+    users?.forEach((u) => {
+      // El backend puede devolver id como string ("3"); la clave debe ser
+      // numérica para que usersMap.get(order.assigned_user_id) coincida.
+      const id = toNumericId(u.id);
+      if (id !== null) map.set(id, u);
+    });
+    return map;
+  }, [users]);
 }
 
 export function useCreateUser() {

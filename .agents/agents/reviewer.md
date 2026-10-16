@@ -11,7 +11,7 @@ permissions:
   - action: edit
     resource: "*"
     effect: ask
-  - action: shell
+  - action: allow
     resource: "*"
     effect: ask
   - action: shell

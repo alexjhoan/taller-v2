@@ -12,6 +12,10 @@ interface CreateOrderPayload {
   mileage: number;
   fuel_level: string;
   failure_description: string;
+  /** Lista de repuestos serializada como JSON string (snake_case: name, quantity, unit_price) */
+  parts?: string;
+  /** ID del usuario asignado (null = no asignado) */
+  assigned_user_id?: number | null;
 }
 
 interface CreateOrderResponseBody {

@@ -24,17 +24,26 @@ export function useApiClient() {
   const handleError = (error: unknown, customMessage?: string) => {
     if (error instanceof ApiError) {
       const apiError = error as ApiError;
-      const errorMessage = apiError.body && typeof apiError.body === 'object' && 'statusText' in apiError.body
+      const detail = apiError.body && typeof apiError.body === 'object' && 'statusText' in apiError.body
         ? (apiError.body as { statusText: string }).statusText
         : apiError.message;
 
       if (apiError.status === 503) {
         enqueueSnackbar('Sin conexión. Se guardó para enviar luego.', { variant: 'warning' });
       } else {
-        enqueueSnackbar(customMessage || errorMessage || 'Error en la operación', { variant: 'error' });
+        // Incluye tipo + status + detalle para depuración desde móvil
+        const debug = `[ApiError ${apiError.status}] ${detail}${customMessage ? ` — ${customMessage}` : ''}`;
+        enqueueSnackbar(debug, { variant: 'error' });
+        // También log en consola por si hay devtools
+        console.error('[apiClient]', debug, error);
       }
     } else {
-      enqueueSnackbar(customMessage || 'Error inesperado', { variant: 'error' });
+      const err = error as Error;
+      const name = err?.name || 'Error';
+      const msg = err?.message || String(error);
+      const debug = `[${name}] ${msg}${customMessage ? ` — ${customMessage}` : ''}`;
+      enqueueSnackbar(debug, { variant: 'error' });
+      console.error('[apiClient]', debug, error);
     }
   };
 

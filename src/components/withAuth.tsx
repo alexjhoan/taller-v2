@@ -17,9 +17,13 @@ export function withAuth<P extends object>(WrappedComponent: ComponentType<P>, o
 
   function WithAuthWrapper(props: P) {
     const router = useRouter();
-    const { isAuthenticated, user } = useUserContext();
+    const { isAuthenticated, user, hydrated } = useUserContext();
 
     useEffect(() => {
+      // Esperar a que UserContext hidrate la cookie: si no, un refresco redirigiría
+      // a /login antes de saber si hay sesión (y login.tsx terminaría en "/")
+      if (!hydrated) return;
+
       const token = document.cookie.split("; ").find((row) => row.startsWith(`${AUTH_COOKIE_NAME}=`));
 
       if (!token || !isAuthenticated) {
@@ -30,7 +34,7 @@ export function withAuth<P extends object>(WrappedComponent: ComponentType<P>, o
       if (roles && user && !roles.includes(user.role)) {
         router.replace("/unauthorized");
       }
-    }, [isAuthenticated, user, router, roles, redirectTo]);
+    }, [hydrated, isAuthenticated, user, router, roles, redirectTo]);
 
     if (!isAuthenticated) {
       return (

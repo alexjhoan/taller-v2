@@ -22,13 +22,6 @@ function HomePage() {
               Bienvenido, {user?.firstName}
             </p>
           </div>
-
-          {/* Info */}
-          <div className="card p-6 text-center">
-            <p className="text-sm text-slate-500">
-              Usa el menú lateral para navegar por las diferentes secciones del sistema.
-            </p>
-          </div>
         </div>
       </div>
     </Layout>

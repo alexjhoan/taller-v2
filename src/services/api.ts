@@ -2,11 +2,13 @@
 // Mecaflow Workshop OS — Cliente API único
 // Base URL desde variable de entorno NEXT_PUBLIC_API_BASE_URL
 // Token JWT seteado vía setApiToken()
+// Usuario para updated_by seteado vía setApiUser()
 // ============================================================
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API || '';
 
 let authToken: string | null = null;
+let apiUser: { id?: number; firstName: string; lastName?: string; role: string } | null = null;
 
 export function setApiToken(token: string | null): void {
   authToken = token;
@@ -16,11 +18,20 @@ export function getApiToken(): string | null {
   return authToken;
 }
 
+export function setApiUser(user: { id?: number; firstName: string; lastName?: string; role: string } | null): void {
+  apiUser = user;
+}
+
+export function getApiUser(): { id?: number; firstName: string; lastName?: string; role: string } | null {
+  return apiUser;
+}
+
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
   headers?: Record<string, string>;
   isMultipart?: boolean;
+  skipUpdatedBy?: boolean;
 }
 
 async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
@@ -36,7 +47,24 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
     requestHeaders['Authorization'] = `Bearer ${authToken}`;
   }
 
-  if (!isMultipart && body) {
+  // Prepare body with updated_by for non-GET requests (unless skipUpdatedBy is true)
+  let requestBody = body;
+  if (body && method !== 'GET' && !isMultipart && typeof body === 'object' && !Array.isArray(body) && body !== null && !options.skipUpdatedBy) {
+    const userForUpdate = apiUser;
+    if (userForUpdate) {
+      requestBody = {
+        ...(body as Record<string, unknown>),
+        updated_by: JSON.stringify({
+          id: userForUpdate.id,
+          firstName: userForUpdate.firstName,
+          lastName: userForUpdate.lastName,
+          role: userForUpdate.role,
+        }),
+      };
+    }
+  }
+
+  if (!isMultipart && requestBody) {
     requestHeaders['Content-Type'] = 'application/json';
   }
 
@@ -45,8 +73,8 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
     headers: requestHeaders,
   };
 
-  if (body) {
-    config.body = isMultipart ? (body as FormData) : JSON.stringify(body);
+  if (requestBody) {
+    config.body = isMultipart ? (requestBody as FormData) : JSON.stringify(requestBody);
   }
 
   const response = await fetch(url, config);
@@ -81,10 +109,10 @@ export class ApiError extends Error {
 
 export const api = {
   get: <T>(endpoint: string) => apiRequest<T>(endpoint, { method: 'GET' }),
-  post: <T>(endpoint: string, body?: unknown) =>
-    apiRequest<T>(endpoint, { method: 'POST', body }),
-  patch: <T>(endpoint: string, body?: unknown) =>
-    apiRequest<T>(endpoint, { method: 'PATCH', body }),
+  post: <T>(endpoint: string, body?: unknown, options?: Partial<RequestOptions>) =>
+    apiRequest<T>(endpoint, { method: 'POST', body, ...options }),
+  patch: <T>(endpoint: string, body?: unknown, options?: Partial<RequestOptions>) =>
+    apiRequest<T>(endpoint, { method: 'PATCH', body, ...options }),
   delete: <T>(endpoint: string) => apiRequest<T>(endpoint, { method: 'DELETE' }),
   upload: <T>(endpoint: string, formData: FormData) =>
     apiRequest<T>(endpoint, { method: 'POST', body: formData, isMultipart: true }),
