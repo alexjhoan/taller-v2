@@ -1,10 +1,8 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
-import { useSnackbar } from "notistack";
 import {
   ArrowLeft,
   CheckCircle2,
-  Clock,
   Plus,
   ShieldAlert,
   Package,
@@ -14,6 +12,7 @@ import {
   FileText,
   Trash2,
   Image,
+  Clock,
 } from "lucide-react";
 import { CustomCard } from "@/components/ui/CustomCard";
 import { CustomButton } from "@/components/ui/CustomButton";
@@ -21,29 +20,31 @@ import { CustomBadge } from "@/components/ui/CustomBadge";
 import { CustomDialog } from "@/components/ui/CustomDialog";
 import { CustomInput } from "@/components/ui/CustomInput";
 import { WorkOrder } from "@/hooks/useWorkOrders";
-import { useUserContext } from "@/context/UserContext";
 import { useApiClient } from "@/services/apiClient";
-import { endpoints } from "@/services/api";
+import { ApiError, endpoints } from "@/services/api";
 import { OrderStatusButton } from "@/components/OrderStatusButton";
 import { EvidenceUploader } from "@/components/EvidenceUploader";
 import { EvidenceGallery } from "@/components/EvidenceGallery";
-import { EVIDENCE_ALLOWED_TYPES, EVIDENCE_MAX_SIZE, EVIDENCE_ACCEPT } from "@/hooks/useEvidenceUpload";
+import { useUserContext } from "@/context/UserContext";
 import { generateShortUid } from "@/utils/uid";
+import { assignFallbackPartIds, canTechnicianDeletePart, serializeParts } from "@/utils/parts";
 
 // --- Componente ---
 
 /**
- * Serializa los repuestos para el payload descartando campos obsoletos
- * (reference). Conserva el resto de propiedades (unit_price, notes, etc.).
+ * Formatea un error del guardado automático del checklist en texto legible:
+ * `[ApiError 500] detalle` para errores de API o `[Tipo] mensaje` para el resto.
  */
-function serializeParts<T>(items: T[]): string {
-  return JSON.stringify(
-    items.map((item) => {
-      const copy = { ...(item as Record<string, unknown>) };
-      delete copy.reference;
-      return copy;
-    }),
-  );
+function formatChecklistError(error: unknown): string {
+  if (error instanceof ApiError) {
+    const detail =
+      error.body && typeof error.body === "object" && "statusText" in error.body
+        ? (error.body as { statusText: string }).statusText
+        : error.message;
+    return `[ApiError ${error.status}] ${detail}`;
+  }
+  const err = error as Error;
+  return `[${err?.name}] ${err?.message}`;
 }
 
 interface TechnicianOrderDetailProps {
@@ -52,9 +53,10 @@ interface TechnicianOrderDetailProps {
 }
 
 export function TechnicianOrderDetail({ order, onBack }: TechnicianOrderDetailProps) {
-  const router = useRouter();
   const apiClient = useApiClient();
-  const { enqueueSnackbar } = useSnackbar();
+  const router = useRouter();
+  // El botón del log de cambios solo se muestra a admin (spec 005 RF-4);
+  // el mecánico no lo ve ni puede usarlo.
   const { user } = useUserContext();
   // La evidencia viene directamente en la orden (campo evidence)
   const evidence = order.evidence ?? [];
@@ -68,20 +70,27 @@ export function TechnicianOrderDetail({ order, onBack }: TechnicianOrderDetailPr
   useEffect(() => {
     setWithdrawalComment(order.withdrawal_comment ?? null);
   }, [order]);
-  // Solo el técnico asignado puede cambiar el estado de la orden
-  // (select en desktop, botón + modal en móvil).
-  const canEditStatus = order.assigned_user_id !== (user?.id ?? null);
+  // El estado es editable por todos (sin restricción de rol ni de asignación).
+  // T-14: el backend aún devuelve parts sin id (RF-10 pendiente) y las
+  // acciones por repuesto (eliminar/editar) comparan por p.id, así que sin
+  // id de respaldo un solo clic borraría o editaría la lista entera. Se
+  // asigna UNA vez al montar (inicializador diferido de useState) para que
+  // cada id sea estable durante toda la sesión.
   const [parts, setParts] = useState<
     Array<{
       id: string;
       name: string;
       quantity: number;
       criticality: string;
-      approvalStatus: string;
-      requestedByTechnician: boolean;
+      // Opcionales igual que en PartItem del hook: los repuestos legacy/checkin
+      // no traen approvalStatus ni requestedByTechnician (RF-10 interim).
+      approvalStatus?: string;
+      requestedByTechnician?: boolean;
       notes?: string;
     }>
-  >(Array.isArray(order.parts) ? order.parts : []);
+  >(() =>
+    assignFallbackPartIds(Array.isArray(order.parts) ? order.parts : [], generateShortUid),
+  );
   const [checklist, setChecklist] = useState<
     Array<{
       id: string;
@@ -91,6 +100,8 @@ export function TechnicianOrderDetail({ order, onBack }: TechnicianOrderDetailPr
       completed: boolean;
     }>
   >(Array.isArray(order.checklist) ? order.checklist : []);
+  // Último error del guardado automático del checklist (se muestra en modal)
+  const [checklistError, setChecklistError] = useState<string | null>(null);
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [isChecklistModalOpen, setIsChecklistModalOpen] = useState(false);
   const [newPart, setNewPart] = useState({ name: "", quantity: 1, notes: "" });
@@ -185,6 +196,8 @@ export function TechnicianOrderDetail({ order, onBack }: TechnicianOrderDetailPr
     }
   };
 
+  // Guardado automático: el toggle persiste el checklist completo en el
+  // backend (PATCH optimista con rollback y modal de error si falla).
   const toggleChecklistItem = async (itemId: string) => {
     const updatedChecklist = checklist.map((item) =>
       item.id === itemId ? { ...item, completed: !item.completed } : item,
@@ -205,6 +218,7 @@ export function TechnicianOrderDetail({ order, onBack }: TechnicianOrderDetailPr
       );
     } catch (error) {
       setChecklist(checklist);
+      setChecklistError(formatChecklistError(error));
     }
   };
 
@@ -230,6 +244,12 @@ export function TechnicianOrderDetail({ order, onBack }: TechnicianOrderDetailPr
   };
 
   const deletePart = async (partId: string) => {
+    // RF-13 — Defensa en profundidad: el botón ya no se pinta si el
+    // repuesto no es borrable, pero el handler también lo verifica antes
+    // de persistir. Si no puede borrarlo, sale sin tocar nada.
+    const part = parts.find((p) => p.id === partId);
+    if (!part || !canTechnicianDeletePart(part)) return;
+
     const updatedParts = parts.filter((p) => p.id !== partId);
 
     try {
@@ -295,12 +315,15 @@ export function TechnicianOrderDetail({ order, onBack }: TechnicianOrderDetailPr
     }
   };
 
-  const getPartStatusBadge = (status: string) => {
+  // approvalStatus es opcional (legacy/checkin, RF-10 interim); los repuestos
+  // sin estado (undefined o desconocido) muestran el badge neutro "Ingresado"
+  // en lugar del valor crudo (decisión 12).
+  const getPartStatusBadge = (status: string | undefined) => {
     switch (status) {
-      case "approved":
+      case "accepted":
         return (
           <CustomBadge variant='success' dot>
-            Aprobado
+            Aceptado
           </CustomBadge>
         );
       case "pending":
@@ -316,7 +339,9 @@ export function TechnicianOrderDetail({ order, onBack }: TechnicianOrderDetailPr
           </CustomBadge>
         );
       default:
-        return <CustomBadge variant='neutral'>{status}</CustomBadge>;
+        // Sin approvalStatus (legacy/checkin) o valor desconocido → badge
+        // neutro "Ingresado", sin color de estado (decisión 12).
+        return <CustomBadge variant='neutral'>Ingresado</CustomBadge>;
     }
   };
 
@@ -499,15 +524,25 @@ export function TechnicianOrderDetail({ order, onBack }: TechnicianOrderDetailPr
                   <p className='mt-0.5 text-xs font-medium text-slate-400'>Cant: {part.quantity}</p>
                   {part.notes && <p className='mt-2 text-xs italic text-slate-500'>&ldquo;{part.notes}&rdquo;</p>}
                 </div>
-                <div className='flex items-center gap-2'>
+                <div className='flex flex-wrap items-center justify-end gap-2'>
                   {getPartStatusBadge(part.approvalStatus)}
-                  <button
-                    onClick={() => deletePart(part.id)}
-                    className='rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500'
-                    title='Eliminar repuesto'
-                  >
-                    <Trash2 className='h-4 w-4' />
-                  </button>
+                  {/* RF-9 — Origen del repuesto: etiqueta junto al badge de
+                      estado solo cuando lo solicitó el técnico. */}
+                  {part.requestedByTechnician && (
+                    <CustomBadge variant='info'>Solicitud del técnico</CustomBadge>
+                  )}
+                  {/* RF-13 — El técnico solo puede ELIMINAR sus propias
+                      solicitudes no aprobadas; para el resto no se ofrece
+                      botón (se oculta, no se deshabilita). */}
+                  {canTechnicianDeletePart(part) && (
+                    <button
+                      onClick={() => deletePart(part.id)}
+                      className='rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500'
+                      title='Eliminar repuesto'
+                    >
+                      <Trash2 className='h-4 w-4' />
+                    </button>
+                  )}
                 </div>
               </div>
             ))
@@ -605,16 +640,16 @@ export function TechnicianOrderDetail({ order, onBack }: TechnicianOrderDetailPr
 
       <EvidenceUploader orderId={order.id} />
 
-      {/* Ver historial de cambios */}
-      <CustomButton
-        variant='secondary'
-        leftIcon={<Clock className='h-4 w-4' />}
-        onClick={() => {
-          router.push(`/admin/order-log?orderId=${order.id}`);
-        }}
-      >
-        Ver Log de Cambios
-      </CustomButton>
+      {/* Ver historial de cambios (solo admin; el mecánico no lo ve) */}
+      {user?.role === "admin" && (
+        <CustomButton
+          variant='secondary'
+          leftIcon={<Clock className='h-4 w-4' />}
+          onClick={() => router.push(`/admin/order-log?orderId=${order.id}`)}
+        >
+          Ver Log de Cambios
+        </CustomButton>
+      )}
 
       {/* Comentario de entrega/cancelación (solo si la orden ya lo tiene) */}
       {withdrawalComment && withdrawalComment.trim() !== "" && (
@@ -754,6 +789,21 @@ export function TechnicianOrderDetail({ order, onBack }: TechnicianOrderDetailPr
               Guardar
             </CustomButton>
           </div>
+        </div>
+      </CustomDialog>
+
+      {/* Modal de error del guardado automático del checklist */}
+      <CustomDialog
+        open={!!checklistError}
+        onClose={() => setChecklistError(null)}
+        title='Error al guardar checklist'
+        maxWidth='sm'
+      >
+        <div className='space-y-3'>
+          <p className='text-sm text-slate-600'>No se pudo guardar el cambio en el checklist.</p>
+          <p className='break-all whitespace-pre-wrap rounded-lg bg-red-50 p-3 text-xs font-medium text-red-600'>
+            {checklistError}
+          </p>
         </div>
       </CustomDialog>
     </div>

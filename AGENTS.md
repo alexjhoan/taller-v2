@@ -47,5 +47,51 @@
 
 ## Comandos
 - Tests: `node --test`
+
+## Skills
+
+Las skills viven en `.agents/skills/<id>/SKILL.md` y se cargan con la herramienta `skill`
+usando el ID del directorio. Carga SOLO la que aplique a la tarea actual: no las cargues todas.
+
+| Skill | Cuándo usarla |
+|---|---|
+| `sdd` | Flujo Spec-Driven Development del proyecto: spec → plan → tareas → implementación → validación. Obligatoria en cualquier trabajo bajo `specs/`. |
+| `using-agent-skills` | Meta-skill: decide qué skill aplica antes de empezar. Empieza por aquí si dudas de cuál. |
+| `find-skills` | Buscar e instalar nuevas skills cuando falta una para la tarea. |
+| `ponytail` | Cualquier tarea de código: el cambio más pequeño que resuelve el problema completo (YAGNI). |
+| `spec-driven-development` | Requisitos y criterios de aceptación antes de escribir código. |
+| `planning-and-task-breakdown` | Descomponer una spec en tareas verificables. |
+| `incremental-implementation` | Implementar por rebanadas delgadas y verificables. |
+| `test-driven-development` | Escribir el test en rojo antes del código. |
+| `browser-testing-with-devtools` | Verificar en navegador real (MCP Chrome DevTools), incluida vista móvil. |
+| `debugging-and-error-recovery` | Algo falló: reproducir → localizar → corregir → guardar. |
+| `code-review-and-quality` | Revisar código en varios ejes antes de cerrar. |
+| `code-simplification` | Reducir complejidad conservando el comportamiento. |
+| `doubt-driven-development` | Contrastar decisiones no triviales con contexto fresco. |
+| `security-and-hardening` | Validación de entradas, permisos, secretos. |
+| `performance-optimization` | Problemas de rendimiento medidos. |
+| `frontend-design` | Dirección visual distintiva al crear o rediseñar una UI. |
+| `frontend-ui-engineering` | UI de producción: accesibilidad y responsive. |
+| `web-design-guidelines` | Auditar la UI contra las buenas prácticas de interfaces web. |
+| `api-and-interface-design` | Contratos de API estables entre front y back. |
+| `source-driven-development` | Verificar contra documentación oficial antes de implementar. |
+| `context-engineering` | Cargar el contexto correcto en el momento correcto. |
+| `documentation-and-adrs` | Documentar el porqué, no el qué. |
+| `git-workflow-and-versioning` | Commits atómicos e historial limpio. |
+| `ci-cd-and-automation` | Gates de calidad automáticos. |
+| `shipping-and-launch` | Checklist de salida y plan de reversión. |
+| `deprecation-and-migration` | Retirar lo viejo y migrar sin cortes. |
+| `observability-and-instrumentation` | Logs, métricas y trazas útiles. |
+| `interview-me` | Requisito ambiguo: preguntar antes de asumir. |
+| `grill-me` | Someter un plan o decisión a presión: entrevista implacable hasta entendimiento compartido. |
+| `idea-refine` | Idea vaga: refinar variantes antes de decidir. |
+| `constraint-driven-development` | Fijar por escrito la barra de calidad del proyecto. |
+
+Regla: si una skill aplica, cárgala ANTES de hacer el trabajo y sigue sus pasos.
+
+Los prompts de los agentes viven en `.opencode/agents/` (esa es la ruta que usa el runtime).
+`.agents/agents/` es un espejo documental: se mantiene byte-idéntico, pero no gobierna la ejecución.
+
 ## Reglas
-- Lee `docs/constitution.md` y la spec activa (`specs/NNN-*/`) antes de tocar código. 
+- Lee `docs/constitution.md` y la spec activa (`specs/NNN-*/`) antes de tocar código.
+- Carga la skill que aplique a la tarea (ver "## Skills") antes de empezar.

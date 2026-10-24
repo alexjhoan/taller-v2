@@ -32,8 +32,10 @@ import { NumericInput } from "@/components/ui/NumericInput";
 import { OrderStatusButton } from "@/components/OrderStatusButton";
 import { WorkOrder } from "@/hooks/useWorkOrders";
 import { useUsers } from "@/hooks/useUsers";
+import { toNumericId, toNumericIdArray } from "@/utils/ids";
+import { assignFallbackPartIds, getPartActions, partNeedsPrice, serializeParts } from "@/utils/parts";
 import { useApiClient } from "@/services/apiClient";
-import { endpoints } from "@/services/api";
+import { ApiError, endpoints } from "@/services/api";
 import { formatCOP } from "@/utils/currency";
 import { useUserContext } from "@/context/UserContext";
 import { generateShortUid } from "@/utils/uid";
@@ -56,7 +58,8 @@ interface OrderFormData {
   failure_description: string;
   mileage: string;
   fuel_level: string;
-  assigned_user_id: number | null;
+  /** IDs de mecánicos asignados (puede ser varios) */
+  assigned_user_id: number[];
 }
 
 interface PartItem {
@@ -65,8 +68,10 @@ interface PartItem {
   quantity: number;
   unit_price?: number;
   criticality: string;
-  approvalStatus: string;
-  requestedByTechnician: boolean;
+  // Opcionales igual que en PartItem del hook: los repuestos legacy/checkin
+  // no traen approvalStatus ni requestedByTechnician (RF-10 interim).
+  approvalStatus?: string;
+  requestedByTechnician?: boolean;
   notes?: string;
 }
 
@@ -82,17 +87,19 @@ interface ChecklistItem {
 type ContactChannel = "whatsapp" | "email";
 
 /**
- * Serializa los repuestos para el payload descartando campos obsoletos
- * (reference). Conserva el resto de propiedades (unit_price, notes, etc.).
+ * Formatea un error del guardado automático del checklist en texto legible:
+ * `[ApiError 500] detalle` para errores de API o `[Tipo] mensaje` para el resto.
  */
-function serializeParts<T>(items: T[]): string {
-  return JSON.stringify(
-    items.map((item) => {
-      const copy = { ...(item as Record<string, unknown>) };
-      delete copy.reference;
-      return copy;
-    }),
-  );
+function formatChecklistError(error: unknown): string {
+  if (error instanceof ApiError) {
+    const detail =
+      error.body && typeof error.body === "object" && "statusText" in error.body
+        ? (error.body as { statusText: string }).statusText
+        : error.message;
+    return `[ApiError ${error.status}] ${detail}`;
+  }
+  const err = error as Error;
+  return `[${err?.name}] ${err?.message}`;
 }
 
 // --- Componente ---
@@ -113,18 +120,30 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
   const evidence = order.evidence ?? [];
   const [formData, setFormData] = useState<OrderFormData | null>(null);
   const [originalData, setOriginalData] = useState<OrderFormData | null>(null);
-  const [parts, setParts] = useState<PartItem[]>(Array.isArray(order.parts) ? order.parts : []);
+  // T-14: el backend aún devuelve parts sin id (RF-10 pendiente) y TODAS las
+  // acciones por repuesto comparan por p.id, así que sin id de respaldo un
+  // solo clic borraría o editaría la lista entera. Se asigna UNA vez al
+  // montar (inicializador diferido de useState) para que cada id sea
+  // estable durante toda la sesión.
+  const [parts, setParts] = useState<PartItem[]>(() =>
+    assignFallbackPartIds(Array.isArray(order.parts) ? order.parts : [], generateShortUid),
+  );
   const [checklist, setChecklist] = useState<ChecklistItem[]>(Array.isArray(order.checklist) ? order.checklist : []);
+  // Último error del guardado automático del checklist (se muestra en modal)
+  const [checklistError, setChecklistError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isPartModalOpen, setIsPartModalOpen] = useState(false);
   const [isChecklistModalOpen, setIsChecklistModalOpen] = useState(false);
   const [editingPart, setEditingPart] = useState<PartItem | null>(null);
   const [editingCheckItem, setEditingCheckItem] = useState<ChecklistItem | null>(null);
   const [newPart, setNewPart] = useState({ name: "", quantity: 1, notes: "", unit_price: 0 });
+  // RF-3 — Paso de precio al aprobar: diálogo que se abre cuando el
+  // repuesto a aprobar no tiene unit_price. `pricePartTarget` guarda el
+  // repuesto original (pending o rejected); cancelar NO lo muta.
+  const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
+  const [pricePartTarget, setPricePartTarget] = useState<PartItem | null>(null);
+  const [pendingPriceValue, setPendingPriceValue] = useState<number>(0);
   const [newCheckItem, setNewCheckItem] = useState({ title: "", category: "DIAGNOSTICO", priority: "MEDIA" });
-  // Servicio (mano de obra) — estado local editable
-  const [serviceDescription, setServiceDescription] = useState("");
-  const [servicePrice, setServicePrice] = useState(0);
   const [contactConfirm, setContactConfirm] = useState<{
     channel: ContactChannel;
     message: string;
@@ -164,7 +183,9 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
       failure_description: order.failure_description,
       mileage: order.mileage.toString(),
       fuel_level: order.fuel_level,
-      assigned_user_id: order.assigned_user_id ?? null,
+      // assigned_user_id puede venir como JSON string, array o FK legacy;
+      // normalizar a number[] para trabajar con la lista de asignados.
+      assigned_user_id: toNumericIdArray(order.assigned_user_id),
     };
     setFormData(data);
     setOriginalData(data);
@@ -183,7 +204,7 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
         serviceItemsData = [];
       }
     }
-    setServiceItems(serviceItemsData.map((item) => ({ id: crypto.randomUUID(), ...item })));
+    setServiceItems(serviceItemsData.map((item) => ({ id: generateShortUid(), ...item })));
   }, [order]);
 
   // Mantener sincronizado el comentario mostrado con el prop de la orden.
@@ -194,6 +215,17 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
   const handleChange = (field: keyof OrderFormData, value: string | number | null) => {
     if (!formData) return;
     setFormData({ ...formData, [field]: value });
+  };
+
+  // Alterna un mecánico en la lista de asignados: lo incluye si no está, lo quita si está.
+  const toggleAssignedUser = (id: number) => {
+    if (!formData) return;
+    setFormData({
+      ...formData,
+      assigned_user_id: formData.assigned_user_id.includes(id)
+        ? formData.assigned_user_id.filter((uid) => uid !== id)
+        : [...formData.assigned_user_id, id],
+    });
   };
 
   /**
@@ -286,7 +318,9 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
         fuel_level: formData.fuel_level,
         parts: serializeParts(parts),
         checklist: JSON.stringify(checklist),
-        assigned_user_id: formData.assigned_user_id,
+        // Asignación múltiple de mecánicos como JSON string (misma convención
+        // que parts/service_items). Lista vacía → "[]" = sin asignar.
+        assigned_user_id: JSON.stringify(formData.assigned_user_id),
         // Items de servicio (mano de obra) - array de objetos {description, price}
         service_items: JSON.stringify(
           serviceItems.map((item) => ({
@@ -318,6 +352,38 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
 
   // --- Part handlers ---
 
+  /**
+   * RF-12/D1 — Persistencia INMEDIATA de los repuestos: PATCH optimista
+   * con rollback (mismo patrón que el auto-guardado del checklist y el
+   * modal del técnico). `budget_accepted: 0` reinicia la aceptación del
+   * cliente para que revise el estado actual de los repuestos.
+   * El error ya lo muestra globalmente apiClient (`[ApiError STATUS] detalle`).
+   */
+  const persistParts = async (previousParts: PartItem[], updatedParts: PartItem[]) => {
+    setParts(updatedParts); // optimista
+    try {
+      await apiClient.patch(
+        endpoints.orders,
+        {
+          id: order.id,
+          parts: serializeParts(updatedParts),
+          budget_accepted: 0,
+          updated_by: JSON.stringify({
+            id: user?.id,
+            firstName: user?.firstName,
+            lastName: user?.lastName,
+            role: user?.role,
+          }),
+        },
+        { showSuccess: false },
+      );
+      // Invalidar la query para que la lista se actualice
+      queryClient.invalidateQueries({ queryKey: ["work_orders"] });
+    } catch {
+      setParts(previousParts); // rollback (el error ya se muestra globalmente)
+    }
+  };
+
   const handleAddPart = async () => {
     if (!newPart.name.trim()) return;
 
@@ -327,14 +393,16 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
       quantity: newPart.quantity,
       unit_price: newPart.unit_price > 0 ? newPart.unit_price : undefined,
       criticality: "preventive",
-      approvalStatus: "pending",
+      // RF-5/D8: los repuestos que agrega el admin se guardan YA aceptados.
+      approvalStatus: "accepted",
       requestedByTechnician: false,
       notes: newPart.notes.trim() || undefined,
     };
 
-    setParts([...parts, newPartItem]);
+    const updatedParts = [...parts, newPartItem];
     setNewPart({ name: "", quantity: 1, notes: "", unit_price: 0 });
     setIsPartModalOpen(false);
+    await persistParts(parts, updatedParts);
   };
 
   const handleEditPart = (part: PartItem) => {
@@ -363,14 +431,90 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
         : p,
     );
 
-    setParts(updatedParts);
     setEditingPart(null);
     setNewPart({ name: "", quantity: 1, notes: "", unit_price: 0 });
     setIsPartModalOpen(false);
+    await persistParts(parts, updatedParts);
   };
 
-  const handleDeletePart = (partId: string) => {
-    setParts(parts.filter((p) => p.id !== partId));
+  const handleDeletePart = async (partId: string) => {
+    await persistParts(parts, parts.filter((p) => p.id !== partId));
+  };
+
+  /**
+   * RF-4 — Confirmación de la aceptación: marca el repuesto como
+   * `accepted` y persiste con el MISMO patrón que el resto de cambios
+   * de repuestos (optimista + PATCH con `budget_accepted: 0` + rollback
+   * vía `persistParts`). El repuesto NUNCA se elimina (trazabilidad,
+   * decisión 3). Acepta un `unitPrice` opcional: si viene (paso de
+   * precio de RF-3) lo guarda junto con el estado; si no, el repuesto
+   * conserva su precio actual (caso en que ya tenía).
+   */
+  const confirmApprovePart = async (part: PartItem, unitPrice?: number) => {
+    await persistParts(
+      parts,
+      parts.map((p) =>
+        p.id === part.id
+          ? {
+              ...p,
+              approvalStatus: "accepted",
+              ...(unitPrice !== undefined ? { unit_price: unitPrice } : {}),
+            }
+          : p,
+      ),
+    );
+  };
+
+  /**
+   * RF-2/RF-3/RF-4 — Acepta un repuesto (Aceptar se muestra en `pending`
+   * y `rejected`, según `getPartActions`). Si le falta `unit_price`
+   * (0/null/undefined, `partNeedsPrice`) abre el diálogo de precio ANTES
+   * de aceptar: el repuesto NO se muta hasta confirmar. Si ya tiene
+   * precio, acepta directo sin diálogo.
+   */
+  const handleApprovePart = async (part: PartItem) => {
+    if (partNeedsPrice(part)) {
+      // Abrir diálogo de precio sin mutar nada: el repuesto queda en su
+      // estado original hasta confirmar (RF-3).
+      setPricePartTarget(part);
+      setPendingPriceValue(0);
+      setIsPriceModalOpen(true);
+      return;
+    }
+    await confirmApprovePart(part);
+  };
+
+  // Cierra el diálogo de precio SIN mutar el repuesto (RF-4): cancelar
+  // deja el ESTADO ORIGINAL (pending sigue pending; rejected sigue
+  // rejected) y nunca convierte un rejected en pending.
+  const closePriceModal = () => {
+    setIsPriceModalOpen(false);
+    setPricePartTarget(null);
+    setPendingPriceValue(0);
+  };
+
+  // Confirma el diálogo de precio: acepta con el precio introducido
+  // reutilizando confirmApprovePart/persistParts (sin duplicar lógica
+  // de persistencia). Precio 0 o vacío no acepta (botón deshabilitado
+  // + guardia aquí, RF-3).
+  const handleConfirmPrice = async () => {
+    if (!pricePartTarget || pendingPriceValue <= 0) return;
+    const target = pricePartTarget;
+    closePriceModal();
+    await confirmApprovePart(target, pendingPriceValue);
+  };
+
+  /**
+   * RF-2/RF-4 — Rechaza un repuesto (Rechazar se muestra en `pending` y
+   * `accepted`): lo marca `rejected` y persiste igual que la aceptación.
+   * El repuesto se CONSERVA en la orden (trazabilidad, decisión 3); el
+   * admin puede deshacerlo con Aceptar o eliminarlo manualmente.
+   */
+  const handleRejectPart = async (part: PartItem) => {
+    await persistParts(
+      parts,
+      parts.map((p) => (p.id === part.id ? { ...p, approvalStatus: "rejected" } : p)),
+    );
   };
 
   // --- Checklist handlers ---
@@ -379,7 +523,7 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
     if (!newCheckItem.title.trim()) return;
 
     const newItem: ChecklistItem = {
-      id: crypto.randomUUID(),
+      id: generateShortUid(),
       title: newCheckItem.title.trim(),
       category: newCheckItem.category,
       priority: newCheckItem.priority,
@@ -421,8 +565,24 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
     setIsChecklistModalOpen(false);
   };
 
-  const toggleCheckItem = (itemId: string) => {
-    setChecklist(checklist.map((item) => (item.id === itemId ? { ...item, completed: !item.completed } : item)));
+  // Guardado automático: el toggle persiste el checklist completo en el
+  // backend (PATCH optimista con rollback y modal de error si falla).
+  const toggleCheckItem = async (itemId: string) => {
+    const updatedChecklist = checklist.map((item) =>
+      item.id === itemId ? { ...item, completed: !item.completed } : item,
+    );
+    const previous = checklist;
+    setChecklist(updatedChecklist); // optimista
+    try {
+      await apiClient.patch(
+        endpoints.orders,
+        { id: order.id, checklist: JSON.stringify(updatedChecklist) },
+        { showSuccess: false },
+      );
+    } catch (error) {
+      setChecklist(previous); // rollback
+      setChecklistError(formatChecklistError(error));
+    }
   };
 
   const handleDeleteCheckItem = (itemId: string) => {
@@ -484,12 +644,15 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
     closeContactConfirm();
   };
 
-  const getPartStatusBadge = (status: string) => {
+  // approvalStatus es opcional (legacy/checkin, RF-10 interim); los repuestos
+  // sin estado (undefined o desconocido) muestran el badge neutro "Ingresado"
+  // en lugar del valor crudo (decisión 12).
+  const getPartStatusBadge = (status: string | undefined) => {
     switch (status) {
-      case "approved":
+      case "accepted":
         return (
           <CustomBadge variant='success' dot>
-            Aprobado
+            Aceptado
           </CustomBadge>
         );
       case "pending":
@@ -505,7 +668,9 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
           </CustomBadge>
         );
       default:
-        return <CustomBadge variant='neutral'>{status}</CustomBadge>;
+        // Sin approvalStatus (legacy/checkin) o valor desconocido → badge
+        // neutro "Ingresado", sin color de estado (decisión 12).
+        return <CustomBadge variant='neutral'>Ingresado</CustomBadge>;
     }
   };
 
@@ -708,20 +873,40 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
           </div>
           <div>
             <label className='mb-1.5 block text-sm font-semibold text-slate-700'>Asignar a</label>
-            <select
-              value={formData.assigned_user_id ?? ""}
-              onChange={(e) => handleChange("assigned_user_id", e.target.value ? parseInt(e.target.value, 10) : null)}
-              className='input-field'
-            >
-              <option value=''>Sin asignar</option>
-              {(users || [])
-                .filter((u) => u.active)
-                .map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.first_name} {u.last_name} ({u.role === "admin" ? "Admin" : "Mecánico"})
-                  </option>
-                ))}
-            </select>
+            {(users || []).filter((u) => u.active).length === 0 ? (
+              <p className='rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-400'>
+                No hay usuarios disponibles
+              </p>
+            ) : (
+              <div className='flex flex-col gap-2'>
+                {(users || [])
+                  .filter((u) => u.active)
+                  .map((u) => {
+                    // El backend puede devolver u.id como string ("3"); se
+                    // normaliza a number para que includes()/toggleAssignedUser
+                    // comparen bien ("3" !== 3 rompería el checked y el payload).
+                    const userId = toNumericId(u.id);
+                    if (userId === null) return null;
+                    return (
+                      <label
+                        key={userId}
+                        className='flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 hover:border-brand-300'
+                      >
+                        <input
+                          type='checkbox'
+                          checked={formData.assigned_user_id.includes(userId)}
+                          onChange={() => toggleAssignedUser(userId)}
+                          className='h-4 w-4 rounded border-slate-300'
+                        />
+                        <span className='text-sm text-slate-700'>
+                          {u.first_name} {u.last_name} ({u.role === "admin" ? "Admin" : "Mecánico"})
+                        </span>
+                      </label>
+                    );
+                  })}
+              </div>
+            )}
+            <p className='mt-1.5 text-xs text-slate-400'>Opcional — quiénes se encargan de esta orden</p>
           </div>
           <div className='grid grid-cols-2 gap-4'>
             <div>
@@ -755,7 +940,7 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
             <CustomButton
               size='sm'
               leftIcon={<Plus className='h-3.5 w-3.5' />}
-              onClick={() => setServiceItems([...serviceItems, { id: crypto.randomUUID(), description: "", price: 0 }])}
+              onClick={() => setServiceItems([...serviceItems, { id: generateShortUid(), description: "", price: 0 }])}
             >
               Agregar servicio
             </CustomButton>
@@ -813,7 +998,7 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
                 size='sm'
                 leftIcon={<Plus className='h-3.5 w-3.5' />}
                 onClick={() =>
-                  setServiceItems([...serviceItems, { id: crypto.randomUUID(), description: "", price: 0 }])
+                  setServiceItems([...serviceItems, { id: generateShortUid(), description: "", price: 0 }])
                 }
               >
                 Agregar servicio
@@ -856,42 +1041,78 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
           {parts.length === 0 ? (
             <p className='text-sm text-slate-400'>No hay repuestos solicitados</p>
           ) : (
-            parts.map((part) => (
-              <div
-                key={part.id}
-                className='flex items-start gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3.5'
-              >
-                <div className='flex-1 min-w-0'>
-                  <p className='text-sm font-bold text-slate-800 truncate'>{part.name}</p>
-                  <p className='mt-0.5 text-xs font-medium text-slate-400'>
-                    Cant: {part.quantity}
-                    {part.unit_price != null && (
-                      <span className='ml-2 text-brand-600 font-semibold'>
-                        · {formatCOP(part.unit_price)} c/u · Total: {formatCOP(part.quantity * part.unit_price)}
-                      </span>
+            parts.map((part) => {
+              // RF-2 — Esquema de botones por estado delegado en el helper
+              // `getPartActions`: pending → Aceptar+Rechazar; accepted → solo
+              // Rechazar (deshacer); rejected → solo Aceptar (deshacer); sin
+              // approvalStatus (legacy/checkin) → ninguno. Editar/Eliminar
+              // siempre visibles, en cualquier estado.
+              const { canApprove, canReject } = getPartActions(part.approvalStatus);
+              return (
+                <div
+                  key={part.id}
+                  className='flex items-start gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3.5'
+                >
+                  <div className='flex-1 min-w-0'>
+                    <p className='text-sm font-bold text-slate-800 truncate'>{part.name}</p>
+                    <p className='mt-0.5 text-xs font-medium text-slate-400'>
+                      Cant: {part.quantity}
+                      {part.unit_price != null && (
+                        <span className='ml-2 text-brand-600 font-semibold'>
+                          · {formatCOP(part.unit_price)} c/u · Total: {formatCOP(part.quantity * part.unit_price)}
+                        </span>
+                      )}
+                    </p>
+                    {part.notes && <p className='mt-2 text-xs italic text-slate-500'>&ldquo;{part.notes}&rdquo;</p>}
+                  </div>
+                  <div className='flex flex-wrap items-center justify-end gap-2'>
+                    {getPartStatusBadge(part.approvalStatus)}
+                    {/* RF-9 — Origen del repuesto: etiqueta junto al badge de
+                        estado solo cuando lo solicitó el técnico; los
+                        repuestos del admin/checkin no la muestran. */}
+                    {part.requestedByTechnician && (
+                      <CustomBadge variant='info'>Solicitud del técnico</CustomBadge>
                     )}
-                  </p>
-                  {part.notes && <p className='mt-2 text-xs italic text-slate-500'>&ldquo;{part.notes}&rdquo;</p>}
+                    {canApprove && (
+                      <CustomButton
+                        type='button'
+                        size='sm'
+                        variant='secondary'
+                        leftIcon={<CheckCircle2 className='h-3.5 w-3.5' />}
+                        onClick={() => handleApprovePart(part)}
+                      >
+                        Aceptar
+                      </CustomButton>
+                    )}
+                    {canReject && (
+                      <CustomButton
+                        type='button'
+                        size='sm'
+                        variant='danger'
+                        leftIcon={<X className='h-3.5 w-3.5' />}
+                        onClick={() => handleRejectPart(part)}
+                      >
+                        Rechazar
+                      </CustomButton>
+                    )}
+                    <button
+                      onClick={() => handleEditPart(part)}
+                      className='rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-brand-50 hover:text-brand-600'
+                      title='Editar repuesto'
+                    >
+                      <FileText className='h-4 w-4' />
+                    </button>
+                    <button
+                      onClick={() => handleDeletePart(part.id)}
+                      className='rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500'
+                      title='Eliminar repuesto'
+                    >
+                      <Trash2 className='h-4 w-4' />
+                    </button>
+                  </div>
                 </div>
-                <div className='flex items-center gap-2'>
-                  {getPartStatusBadge(part.approvalStatus)}
-                  <button
-                    onClick={() => handleEditPart(part)}
-                    className='rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-brand-50 hover:text-brand-600'
-                    title='Editar repuesto'
-                  >
-                    <FileText className='h-4 w-4' />
-                  </button>
-                  <button
-                    onClick={() => handleDeletePart(part.id)}
-                    className='rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500'
-                    title='Eliminar repuesto'
-                  >
-                    <Trash2 className='h-4 w-4' />
-                  </button>
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </CustomCard>
@@ -1125,6 +1346,44 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
         </div>
       </CustomDialog>
 
+      {/* Modal de precio unitario al aceptar (RF-3): se abre solo si el
+          repuesto no tiene unit_price. Cancelar (o cerrar) NO muta nada:
+          el repuesto queda en su estado original (RF-4). */}
+      <CustomDialog open={isPriceModalOpen} onClose={closePriceModal} title='Aceptar Repuesto'>
+        <div className='space-y-4'>
+          <div className='rounded-lg border border-slate-100 bg-slate-50 p-3.5'>
+            <p className='text-sm font-bold text-slate-800 truncate'>{pricePartTarget?.name}</p>
+            <p className='mt-0.5 text-xs font-medium text-slate-400'>Cant: {pricePartTarget?.quantity}</p>
+          </div>
+          <p className='text-sm text-slate-600'>
+            Ingresa el precio unitario para aceptar este repuesto (es necesario para el total del presupuesto):
+          </p>
+          <NumericInput
+            label='Precio unitario'
+            value={pendingPriceValue}
+            min={0}
+            isCurrency={true}
+            allowDecimal={true}
+            placeholder='0'
+            onChange={(_, numericValue) => setPendingPriceValue(numericValue ?? 0)}
+          />
+          <div className='flex gap-3'>
+            <CustomButton type='button' variant='secondary' className='flex-1' onClick={closePriceModal}>
+              Cancelar
+            </CustomButton>
+            <CustomButton
+              type='button'
+              className='flex-1'
+              leftIcon={<CheckCircle2 className='h-4 w-4' />}
+              onClick={handleConfirmPrice}
+              disabled={pendingPriceValue <= 0}
+            >
+              Aceptar
+            </CustomButton>
+          </div>
+        </div>
+      </CustomDialog>
+
       {/* Modal de checklist */}
       <CustomDialog
         open={isChecklistModalOpen}
@@ -1246,6 +1505,21 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
               Guardar
             </CustomButton>
           </div>
+        </div>
+      </CustomDialog>
+
+      {/* Modal de error del guardado automático del checklist */}
+      <CustomDialog
+        open={!!checklistError}
+        onClose={() => setChecklistError(null)}
+        title='Error al guardar checklist'
+        maxWidth='sm'
+      >
+        <div className='space-y-3'>
+          <p className='text-sm text-slate-600'>No se pudo guardar el cambio en el checklist.</p>
+          <p className='break-all whitespace-pre-wrap rounded-lg bg-red-50 p-3 text-xs font-medium text-red-600'>
+            {checklistError}
+          </p>
         </div>
       </CustomDialog>
     </div>

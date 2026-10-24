@@ -154,6 +154,7 @@ function AdminDashboardPage() {
             error={!!ordersError}
             isFetching={isFetchingOrders}
             onRefresh={() => refetchOrders()}
+            showPendingPartsCounter={true}
           />
         ) : (
           <CustomCard>

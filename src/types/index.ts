@@ -16,7 +16,7 @@ export type OrderStatus =
 
 export type FuelLevel = 'E' | '1/4' | '1/2' | '3/4' | 'F';
 
-export type PartApprovalStatus = 'approved' | 'pending' | 'rejected';
+export type PartApprovalStatus = 'accepted' | 'pending' | 'rejected';
 
 export type PartCriticality = 'critical' | 'preventive' | 'recommended';
 

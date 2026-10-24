@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { api, endpoints, ApiError, getApiToken } from '@/services/api';
 import { useSnackbar } from 'notistack';
+import { generateShortUid } from '@/utils/uid';
 
 export const EVIDENCE_ALLOWED_TYPES = [
   'image/jpeg',
@@ -196,7 +197,7 @@ export function useEvidenceUpload({ orderId, onAllCompleted }: UseEvidenceUpload
     const fileArray = Array.from(newFiles);
     const newUploadFiles: UploadFile[] = fileArray.map((file) => ({
       file,
-      id: crypto.randomUUID(),
+      id: generateShortUid(),
       progress: 0,
       status: 'pending' as const,
     }));

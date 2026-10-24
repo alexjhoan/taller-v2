@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, endpoints } from "@/services/api";
-import { toNumericId } from "@/utils/ids";
+import { toNumericIdArray } from "@/utils/ids";
 
 export interface ChecklistItem {
   id: string;
@@ -13,12 +13,14 @@ export interface ChecklistItem {
 export interface PartItem {
   id: string;
   name: string;
-  reference: string;
   quantity: number;
   unit_price?: number;
   criticality: string;
-  approvalStatus: string;
-  requestedByTechnician: boolean;
+  // RF-10 interim: el backend aún elimina estos campos al devolver parts
+  // (y los repuestos de checkin/legacy nunca los tuvieron), así que van
+  // opcionales hasta que el backend los devuelva verbatim.
+  approvalStatus?: string;
+  requestedByTechnician?: boolean;
   notes?: string;
 }
 
@@ -40,7 +42,8 @@ export interface WorkOrder {
   finished_at: string | null;
   withdrawal_comment: string | null;
   created_by: number;
-  assigned_user_id: number | null;
+  /** Array de IDs de mecánicos asignados (normalizado a number[]) */
+  assigned_user_id: number[];
   created_at: string;
   updated_at: string;
   checklist?: ChecklistItem[] | string;
@@ -71,9 +74,10 @@ export function parseWorkOrder(order: WorkOrder): WorkOrder {
 
   return {
     ...order,
-    // El backend puede devolver assigned_user_id como string ("3");
-    // normalizarlo aquí hace que usersMap.get() y el filtro del técnico funcionen.
-    assigned_user_id: toNumericId(order.assigned_user_id),
+    // El backend puede devolver assigned_user_id como JSON string ("[3,5]"),
+    // array o FK escalar legacy ("3"); normalizarlo a number[] aquí hace que
+    // usersMap.get() y el filtro del técnico (inclusión) funcionen siempre.
+    assigned_user_id: toNumericIdArray(order.assigned_user_id),
     checklist: safeParse<ChecklistItem[]>(order.checklist, []),
     parts: safeParse<PartItem[]>(order.parts, []),
     evidence: safeParse<string[]>(order.evidence, []),

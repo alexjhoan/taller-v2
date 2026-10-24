@@ -1,4 +1,4 @@
-import { Car, Calendar, User, UserCheck } from 'lucide-react';
+import { Calendar, User, UserCheck } from 'lucide-react';
 import { CustomBadge } from '@/components/ui/CustomBadge';
 import { WorkOrder } from '@/hooks/useWorkOrders';
 import { User as UserType } from '@/hooks/useUsers';
@@ -8,8 +8,8 @@ interface OrderCardProps {
   onSelect: (order: WorkOrder) => void;
   /** Mostrar fecha de creación (dashboard) o finalización (historial) */
   dateLabel?: 'created' | 'finished';
-  /** Usuario asignado (match con assigned_user_id) */
-  assignedUser?: UserType | null;
+  /** Mecánicos asignados (match con assigned_user_id, que es un array de IDs) */
+  assignedUsers?: UserType[];
 }
 
 const statusMap: Record<string, { label: string; variant: 'success' | 'warning' | 'danger' | 'info' | 'neutral' }> = {
@@ -28,7 +28,7 @@ const assignedStyles: Record<string, string> = {
   admin: 'bg-orange-100 text-orange-800 border-orange-200',
 };
 
-export function OrderCard({ order, onSelect, dateLabel = 'created', assignedUser }: OrderCardProps) {
+export function OrderCard({ order, onSelect, dateLabel = 'created', assignedUsers }: OrderCardProps) {
   const status = statusMap[order.status] || { label: order.status, variant: 'neutral' as const };
 
   const dateValue = dateLabel === 'finished' ? order.finished_at : order.created_at;
@@ -60,15 +60,18 @@ export function OrderCard({ order, onSelect, dateLabel = 'created', assignedUser
         <span className="truncate font-medium">{order.customer_name}</span>
       </div>
 
-      {/* Asignado - siempre se muestra */}
-      {order.assigned_user_id && assignedUser ? (
-        <div className="mt-2 flex items-center gap-2">
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${assignedStyles[assignedUser.role]}`}
-          >
-            <UserCheck className="h-3 w-3" />
-            {assignedUser.first_name} {assignedUser.last_name}
-          </span>
+      {/* Asignados - siempre se muestra (un badge por mecánico) */}
+      {assignedUsers && assignedUsers.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {assignedUsers.map((assignedUser) => (
+            <span
+              key={assignedUser.id}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${assignedStyles[assignedUser.role]}`}
+            >
+              <UserCheck className="h-3 w-3" />
+              {assignedUser.first_name} {assignedUser.last_name}
+            </span>
+          ))}
         </div>
       ) : (
         <div className="mt-2 flex items-center gap-2">

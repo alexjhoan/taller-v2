@@ -3,7 +3,6 @@ import { useSnackbar } from "notistack";
 import { useUserContext } from "@/context/UserContext";
 import { generateShortUid } from "@/utils/uid";
 import {
-  Camera,
   Plus,
   Trash2,
   Car,
@@ -26,6 +25,7 @@ import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { normalizePlate, isValidColombianPlate } from "@/utils/plate";
 import { useCreateOrder } from "@/hooks/useCreateOrder";
 import { useUsers } from "@/hooks/useUsers";
+import { toNumericId } from "@/utils/ids";
 import { localForage } from "@/services/localForage";
 import { formatCOP } from "@/utils/currency";
 import { EvidenceUploader } from "@/components/EvidenceUploader";
@@ -50,6 +50,7 @@ interface PartItem {
   name: string;
   quantity: number;
   unit_price: number | null;
+  approvalStatus?: string;
 }
 
 interface ReceptionFormData {
@@ -68,7 +69,8 @@ interface ReceptionFormData {
   checklist: WorkChecklistItem[];
   parts: PartItem[];
   hide_costs_from_technicians: boolean;
-  assigned_user_id: number | null;
+  /** IDs de mecánicos asignados (puede ser varios) */
+  assigned_user_id: number[];
 }
 
 // --- Constantes ---
@@ -103,7 +105,7 @@ export function ReceptionCheckinForm() {
     checklist: [],
     parts: [],
     hide_costs_from_technicians: true,
-    assigned_user_id: null,
+    assigned_user_id: [],
   });
 
   const [newCheckItem, setNewCheckItem] = useState("");
@@ -111,6 +113,10 @@ export function ReceptionCheckinForm() {
   const [newPartName, setNewPartName] = useState("");
   const [newPartQuantity, setNewPartQuantity] = useState("");
   const [newPartUnitPrice, setNewPartUnitPrice] = useState("");
+  // Servicios (mano de obra) — lista editable en la recepción
+  const [serviceItems, setServiceItems] = useState<Array<{ id: string; description: string; price: number }>>([]);
+  const [newServiceDescription, setNewServiceDescription] = useState("");
+  const [newServicePrice, setNewServicePrice] = useState("");
   const [plateError, setPlateError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -139,7 +145,7 @@ export function ReceptionCheckinForm() {
   const addChecklistItem = useCallback((title: string, priority: ChecklistPriority) => {
     if (!title.trim()) return;
     const newItem: WorkChecklistItem = {
-      id: crypto.randomUUID(),
+      id: generateShortUid(),
       title: title.trim(),
       category: "DIAGNOSTICO",
       priority,
@@ -199,6 +205,9 @@ export function ReceptionCheckinForm() {
         name: trimmedName,
         quantity: quantityValue,
         unit_price: unitPriceValue,
+        // RF-6: el repuesto de recepción nace aceptado (es parte de la
+        // cotización inicial y debe verse en el portal sin esperar al admin).
+        approvalStatus: "accepted",
       };
 
       setFormData((prev) => ({ ...prev, parts: [...prev.parts, newPart] }));
@@ -226,7 +235,51 @@ export function ReceptionCheckinForm() {
     }
   };
 
+  // --- Servicios (mano de obra) ---
+  // Precio vacío o no numérico → 0. Descripción obligatoria.
+  const addService = useCallback(() => {
+    const trimmedDescription = newServiceDescription.trim();
+    if (!trimmedDescription) {
+      enqueueSnackbar("La descripción del servicio es obligatoria", { variant: "error" });
+      return;
+    }
+
+    const parsedPrice = parseFloat(newServicePrice);
+    const priceValue = newServicePrice.trim() === "" || !Number.isFinite(parsedPrice) ? 0 : parsedPrice;
+
+    setServiceItems((prev) => [
+      ...prev,
+      { id: generateShortUid(), description: trimmedDescription, price: priceValue },
+    ]);
+    setNewServiceDescription("");
+    setNewServicePrice("");
+  }, [newServiceDescription, newServicePrice, enqueueSnackbar]);
+
+  const removeService = (id: string) => {
+    setServiceItems((prev) => prev.filter((service) => service.id !== id));
+  };
+
+  const handleServiceInputEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addService();
+    }
+  };
+
   const { mutate: createOrder, isPending: isCreating } = useCreateOrder();
+
+  // Usuarios activos para los checkboxes de asignación múltiple.
+  const activeUsers = (users || []).filter((u) => u.active);
+
+  // Alterna un mecánico en la lista de asignados: lo incluye si no está, lo quita si está.
+  const toggleAssignedUser = (id: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      assigned_user_id: prev.assigned_user_id.includes(id)
+        ? prev.assigned_user_id.filter((uid) => uid !== id)
+        : [...prev.assigned_user_id, id],
+    }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -270,9 +323,15 @@ export function ReceptionCheckinForm() {
           name: p.name,
           quantity: p.quantity,
           unit_price: p.unit_price,
+          // RF-6: viaja explícito para que el repuesto nazca aceptado.
+          approvalStatus: p.approvalStatus,
         })),
       ),
-      assigned_user_id: formData.assigned_user_id,
+      // Servicios (mano de obra) — lista vacía → "[]".
+      service_items: JSON.stringify(serviceItems.map((s) => ({ description: s.description, price: s.price }))),
+      // Asignación múltiple de mecánicos como JSON string (misma convención
+      // que parts/service_items). Lista vacía → "[]" = sin asignar.
+      assigned_user_id: JSON.stringify(formData.assigned_user_id),
     };
 
     createOrder(payload, {
@@ -332,8 +391,9 @@ export function ReceptionCheckinForm() {
           checklist: [],
           parts: [],
           hide_costs_from_technicians: true,
-          assigned_user_id: null,
+          assigned_user_id: [],
         });
+        setServiceItems([]);
         setPendingFiles([]);
         setPlateError("");
       },
@@ -540,7 +600,7 @@ export function ReceptionCheckinForm() {
           </div>
         </CustomCard>
 
-        {/* --- Usuario Asignado --- */}
+        {/* --- Usuarios Asignados (múltiples) --- */}
         <CustomCard>
           <div className='mb-4 flex items-center gap-2'>
             <div className='flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50'>
@@ -549,27 +609,39 @@ export function ReceptionCheckinForm() {
             <h2 className='text-sm font-bold text-slate-800'>Asignar a</h2>
           </div>
           <div>
-            <label className='mb-1.5 block text-sm font-semibold text-slate-700'>Usuario responsable</label>
-            <select
-              value={formData.assigned_user_id ?? ""}
-              onChange={(e) =>
-                setFormData((prev) => ({
-                  ...prev,
-                  assigned_user_id: e.target.value ? parseInt(e.target.value, 10) : null,
-                }))
-              }
-              className='input-field'
-            >
-              <option value=''>Sin asignar</option>
-              {(users || [])
-                .filter((u) => u.active)
-                .map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.first_name} {u.last_name} ({u.role === "admin" ? "Admin" : "Mecánico"})
-                  </option>
-                ))}
-            </select>
-            <p className='mt-1.5 text-xs text-slate-400'>Opcional — quién se encarga de esta orden</p>
+            <p className='mb-2 text-sm font-semibold text-slate-700'>Mecánicos asignados</p>
+            {activeUsers.length === 0 ? (
+              <p className='rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-400'>
+                No hay usuarios disponibles
+              </p>
+            ) : (
+              <div className='flex flex-col gap-2'>
+                {activeUsers.map((u) => {
+                  // El backend puede devolver u.id como string ("3"); se
+                  // normaliza a number para que includes()/toggleAssignedUser
+                  // comparen bien ("3" !== 3 rompería el checked y el payload).
+                  const userId = toNumericId(u.id);
+                  if (userId === null) return null;
+                  return (
+                    <label
+                      key={userId}
+                      className='flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 hover:border-brand-300'
+                    >
+                      <input
+                        type='checkbox'
+                        checked={formData.assigned_user_id.includes(userId)}
+                        onChange={() => toggleAssignedUser(userId)}
+                        className='h-4 w-4 rounded border-slate-300'
+                      />
+                      <span className='text-sm text-slate-700'>
+                        {u.first_name} {u.last_name} ({u.role === "admin" ? "Admin" : "Mecánico"})
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            <p className='mt-1.5 text-xs text-slate-400'>Opcional — quiénes se encargan de esta orden</p>
           </div>
         </CustomCard>
 
@@ -668,6 +740,87 @@ export function ReceptionCheckinForm() {
               placeholder='El vehículo vibra al frenar...'
             />
           </div>
+        </CustomCard>
+
+        {/* --- Servicios (Mano de obra) --- */}
+        <CustomCard>
+          <div className='mb-4 flex items-center gap-2'>
+            <div className='flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50'>
+              <Wrench className='h-4 w-4 text-brand-600' />
+            </div>
+            <h2 className='text-sm font-bold text-slate-800'>Servicios (Mano de obra)</h2>
+          </div>
+
+          {/* Formulario "Agregar servicio" */}
+          <div className='space-y-3'>
+            <CustomInput
+              label='Descripción del servicio'
+              name='new_service_description'
+              value={newServiceDescription}
+              onChange={(e) => setNewServiceDescription(e.target.value)}
+              placeholder='Ej: Cambio de aceite y filtro'
+              helperText='Obligatorio'
+              autoComplete='off'
+              onKeyDown={handleServiceInputEnter}
+            />
+            <div className='grid grid-cols-2 gap-3'>
+              <NumericInput
+                label='Precio (COP)'
+                name='new_service_price'
+                value={newServicePrice}
+                onChange={(_, numericValue) => setNewServicePrice(numericValue !== null ? String(numericValue) : "")}
+                placeholder='0'
+                helperText='Opcional'
+                allowDecimal={true}
+                min={0}
+                isCurrency={true}
+              />
+            </div>
+            <CustomButton
+              type='button'
+              size='md'
+              className='w-full'
+              leftIcon={<Plus className='h-4 w-4' />}
+              onClick={addService}
+            >
+              Agregar servicio
+            </CustomButton>
+          </div>
+
+          {/* Lista de servicios */}
+          {serviceItems.length > 0 && (
+            <div className='mt-4 space-y-2'>
+              {serviceItems.map((service) => (
+                <div
+                  key={service.id}
+                  className='flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3 transition-all'
+                >
+                  <div className='flex-1'>
+                    <p className='text-sm font-medium text-slate-700'>{service.description}</p>
+                    <p className='mt-0.5 text-xs text-slate-500'>{formatCOP(service.price)}</p>
+                  </div>
+                  <button
+                    type='button'
+                    onClick={() => removeService(service.id)}
+                    aria-label={`Eliminar servicio ${service.description}`}
+                    className='rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500'
+                  >
+                    <Trash2 className='h-4 w-4' />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Total mano de obra */}
+          {serviceItems.length > 0 && (
+            <div className='mt-4 border-t border-slate-100 pt-4 text-right'>
+              <p className='text-xs font-medium text-slate-400'>Total mano de obra</p>
+              <p className='text-xl font-extrabold text-brand-600'>
+                {formatCOP(serviceItems.reduce((sum, item) => sum + item.price, 0))}
+              </p>
+            </div>
+          )}
         </CustomCard>
 
         {/* --- Repuestos solicitados --- */}

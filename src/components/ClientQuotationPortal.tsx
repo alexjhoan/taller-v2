@@ -23,6 +23,7 @@ import { CustomDialog } from "@/components/ui/CustomDialog";
 import { EvidenceGallery } from "@/components/EvidenceGallery";
 import { useWhatsApp } from "@/hooks/useWhatsApp";
 import { formatCOP } from "@/utils/currency";
+import { isPartVisibleInPortal } from "@/utils/parts";
 import { api, endpoints } from "@/services/api";
 
 // --- Tipos ---
@@ -96,7 +97,6 @@ interface OrderData {
   mileage: number;
   fuel_level: string;
   failure_description: string;
-  assigned_user_id: number | null;
   status: OrderStatus;
   budget_accepted: number;
   started_at: string | null;
@@ -197,6 +197,12 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
     }
   }, [order?.parts]);
 
+  // RF-7/RF-6 — Repuestos VISIBLES: approvalStatus undefined (legacy/checkin,
+  // parte de la cotización inicial) o "accepted"; se ocultan "pending" y
+  // "rejected". Este filtrado ocurre ANTES del render y de TODOS los cálculos
+  // de totales: todo lo demás consume esta lista, nunca orderParts sin filtrar.
+  const visibleParts = useMemo(() => orderParts.filter(isPartVisibleInPortal), [orderParts]);
+
   const progress = useMemo(() => {
     if (checklist.length === 0) return 0;
     const completed = checklist.filter((item: ChecklistItem) => item.completed).length;
@@ -217,7 +223,7 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
     return stepMap[status] ?? 0;
   };
 
-  // Calculate totals from orderParts and serviceItems (since budget comes empty)
+  // Calcula los totales a partir de visibleParts y serviceItems (budget llega vacío)
   const {
     subtotal,
     total,
@@ -228,29 +234,28 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
     approvedPartsTotal,
     approvedLaborTotal,
   } = useMemo(() => {
-    // Parts from order.parts
-    const partsItems: OrderPartItem[] = orderParts || [];
+    // Repuestos VISIBLES (ya filtrados con isPartVisibleInPortal, RF-7)
+    const partsItems: OrderPartItem[] = visibleParts;
     const partsTotal = partsItems.reduce(
       (sum: number, item: OrderPartItem) => sum + (item.unit_price || 0) * (item.quantity || 0),
       0,
     );
-    // Si el presupuesto ya fue aceptado, todas las partes cuentan como aprobadas
-    // (el backend no devuelve approvalStatus en los parts y decisions se limpia tras enviar)
+    // Si el presupuesto ya fue aceptado (budget_accepted === 1), todas las partes
+    // visibles cuentan como aceptadas (atajo conservado). Si no, manda la decisión
+    // del CLIENTE por repuesto dentro de su sesión de revisión (RF-7): sobre los
+    // visibles solo decisions[id] === "accepted" cuenta en el total aceptado; los
+    // sin decisión aceptada quedan como pendientes.
     const isBudgetAccepted = order?.budget_accepted === 1;
     const approvedParts = isBudgetAccepted
       ? partsItems
-      : partsItems.filter(
-          (item: OrderPartItem) => decisions[item.id] === "accepted" || item.approvalStatus === "approved",
-        );
+      : partsItems.filter((item: OrderPartItem) => decisions[item.id] === "accepted");
     const approvedPartsTotal = approvedParts.reduce(
       (sum: number, item: OrderPartItem) => sum + (item.unit_price || 0) * (item.quantity || 0),
       0,
     );
     const rejectedPartsCount = isBudgetAccepted
       ? 0
-      : partsItems.filter(
-          (item: OrderPartItem) => decisions[item.id] === "rejected" || item.approvalStatus === "rejected",
-        ).length;
+      : partsItems.filter((item: OrderPartItem) => decisions[item.id] === "rejected").length;
 
     // Labor from serviceItems — la mano de obra es obligatoria, siempre se suma completa
     const laborTotal = serviceItems.reduce((sum: number, item: ServiceItem) => sum + (item.price || 0), 0);
@@ -268,7 +273,7 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
       approvedPartsTotal,
       approvedLaborTotal,
     };
-  }, [orderParts, serviceItems, decisions, order?.budget_accepted]);
+  }, [visibleParts, serviceItems, decisions, order?.budget_accepted]);
 
   const handleDecisionChange = (itemId: string | number, decision: CustomerDecision) => {
     setDecisions((prev) => ({ ...prev, [String(itemId)]: decision }));
@@ -291,7 +296,7 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
     budget.forEach((item: BudgetItem) => {
       newDecisions[String(item.id)] = "accepted";
     });
-    (orderParts || []).forEach((item: OrderPartItem) => {
+    visibleParts.forEach((item: OrderPartItem) => {
       newDecisions[String(item.id)] = "accepted";
     });
     serviceItems.forEach((item: ServiceItem) => {
@@ -305,7 +310,7 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
     budget.forEach((item: BudgetItem) => {
       newDecisions[String(item.id)] = "rejected";
     });
-    (orderParts || []).forEach((item: OrderPartItem) => {
+    visibleParts.forEach((item: OrderPartItem) => {
       newDecisions[String(item.id)] = "rejected";
     });
     serviceItems.forEach((item: ServiceItem) => {
@@ -423,7 +428,7 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
       </CustomCard>
 
       {/* Progreso del checklist */}
-      {checklist.length > 0 && currentStep > 2 && currentStep < 7 && (
+      {checklist.length > 0 && currentStep > 3 && currentStep < 7 && (
         <CustomCard>
           <div className='mb-3 flex items-center justify-between'>
             <div className='flex items-center gap-2'>
@@ -606,25 +611,24 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
           </div>
         </div>
 
-        {budget.length === 0 && (!orderParts || orderParts.length === 0) ? (
+        {budget.length === 0 && visibleParts.length === 0 ? (
           <p className='text-sm text-slate-400'>No hay ítems en el presupuesto</p>
         ) : (
           <div className='space-y-3'>
-            {/* --- Partes necesarias --- */}
+            {/* --- Partes necesarias (solo visibles, RF-7) --- */}
             {(() => {
-              const parts = orderParts || [];
+              const parts = visibleParts;
               if (parts.length === 0) return null;
               const partsTotal = parts.reduce(
                 (sum: number, item: OrderPartItem) => sum + (item.unit_price || 0) * (item.quantity || 0),
                 0,
               );
+              // Atajo: presupuesto ya aceptado → todo visible cuenta; si no, manda
+              // la decisión del cliente por repuesto (RF-7).
               const isBudgetAccepted = order?.budget_accepted === 1;
               const approvedParts = isBudgetAccepted
                 ? parts
-                : parts.filter(
-                    (item: OrderPartItem) =>
-                      decisions[String(item.id)] === "accepted" || item.approvalStatus === "approved",
-                  );
+                : parts.filter((item: OrderPartItem) => decisions[String(item.id)] === "accepted");
               const approvedPartsTotal = approvedParts.reduce(
                 (sum: number, item: OrderPartItem) => sum + (item.unit_price || 0) * (item.quantity || 0),
                 0,
@@ -643,9 +647,11 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
                   </div>
                   <div className='space-y-2'>
                     {parts.map((item: OrderPartItem, index: number) => {
+                      // Sobre los visibles manda la decisión del cliente (RF-7):
+                      // sin decisión aceptada el repuesto queda como pendiente.
                       const currentDecision = isBudgetAccepted
                         ? "accepted"
-                        : decisions[String(item.id)] || item.approvalStatus || "pending";
+                        : decisions[String(item.id)] || "pending";
                       return (
                         <div
                           key={item.id}
@@ -875,8 +881,8 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
             <AlertCircle className='h-16 w-16 text-red-500' />
           </div>
           <p className='mt-4 text-sm text-slate-600'>
-            Ocurrió un error al aceptar su presupuesto. Por favor intente más tarde o notifique por
-            WhatsApp al administrador.
+            Ocurrió un error al aceptar su presupuesto. Por favor intente más tarde o notifique por WhatsApp al
+            administrador.
           </p>
         </div>
         <div className='mt-6 space-y-3'>

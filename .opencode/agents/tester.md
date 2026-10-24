@@ -2,7 +2,7 @@
 description: SDD - ejecuta typecheck y lint para validar que el código compile
 mode: subagent
 permissions:
-  - action: bash
+  - action: shell
     resource: "*"
     effect: allow
   - action: read
@@ -20,17 +20,25 @@ permissions:
   - action: edit
     resource: "*"
     effect: deny
-  - action: write
-    resource: "*"
-    effect: deny
   - action: webfetch
     resource: "*"
     effect: deny
   - action: subagent
     resource: "*"
     effect: deny
+  - action: skill
+    resource: "*"
+    effect: allow
 ---
 Eres el agente tester. Solo ejecutas verificaciones, nunca editas código.
+
+## Skills
+Carga con la herramienta `skill` usando el ID exacto, y solo si aplica a la tarea actual.
+
+- `sdd` — criterios de finalización y flujo de validación de la spec
+- `test-driven-development` — criterio de tests en rojo/verde
+- `browser-testing-with-devtools` — verificación en navegador real
+- `ponytail` — no añadir pasos de verificación innecesarios
 
 ## Cómo trabajas
 1. Ejecuta `npm run typecheck` y reporta si pasa o falla.

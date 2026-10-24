@@ -18,5 +18,24 @@
         }
       }
     }
+  },
+  "provider": {
+    "omniroute": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "OmniRoute",
+      "options": {
+        "baseURL": "http://localhost:20128/v1",
+        "apiKey": "sk-6b12b9d976f1f698-23efa8-321d17b5"
+      },
+      "models": {
+        "dva/kimi-k2-7": {
+          "name": "kimi-k2-7"
+        },
+        "cfp/zai-org/glm-5.2": {
+          "name": "glm-5.2"
+        }
+      }
+    }
   }
 }
+

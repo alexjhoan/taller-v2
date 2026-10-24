@@ -3,7 +3,7 @@
 // (persistencia en localStorage + filtrado de la lista)
 // ============================================================
 
-import { toNumericId } from '@/utils/ids';
+import { toNumericIdArray } from '@/utils/ids';
 
 /**
  * Clave en localStorage para la selección del filtro de estado.
@@ -93,15 +93,16 @@ export function filterOrdersByStatus<T extends { status: string }>(
 }
 
 /**
- * Filtra las órdenes asignadas a un usuario (vista del técnico).
- * Compara con toNumericId porque el backend a veces devuelve el FK
- * como string ("3") y `"3" !== 3` dejaría al técnico sin sus órdenes.
+ * Filtra las órdenes asignadas al usuario (vista del técnico);
+ * ahora assigned_user_id es un array de IDs de mecánicos y se filtra
+ * por inclusión (el técnico ve todas las órdenes donde participa).
+ * toNumericIdArray tolera JSON string ("[3,5]"), array o FK legacy ("3").
  * Sin userId (null/undefined) → lista vacía: no se muestran órdenes ajenas.
  */
-export function filterOrdersByAssignedUser<T extends { assigned_user_id: number | null }>(
+export function filterOrdersByAssignedUser<T extends { assigned_user_id: number[] | number | null | string }>(
   orders: T[] | null | undefined,
   userId: number | null | undefined
 ): T[] {
   if (!orders || userId === null || userId === undefined) return [];
-  return orders.filter((o) => toNumericId(o.assigned_user_id) === userId);
+  return orders.filter((o) => toNumericIdArray(o.assigned_user_id).includes(userId));
 }

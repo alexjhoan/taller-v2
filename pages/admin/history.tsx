@@ -8,7 +8,8 @@ import { CustomInput } from "@/components/ui/CustomInput";
 import { Layout } from "@/components/Layout";
 import { useDeliveredOrders } from "@/hooks/useDeliveredOrders";
 import { WorkOrder } from "@/hooks/useWorkOrders";
-import { useUsersMap } from "@/hooks/useUsers";
+import { useUsersMap, User as UserType } from "@/hooks/useUsers";
+import { toNumericIdArray } from "@/utils/ids";
 import { AdminOrderDetailReadOnly } from "@/components/AdminOrderDetailReadOnly";
 import { OrderCard } from "@/components/OrderCard";
 
@@ -140,7 +141,9 @@ function AdminHistoryPage() {
                   order={order}
                   onSelect={setSelectedOrder}
                   dateLabel='finished'
-                  assignedUser={order.assigned_user_id ? (usersMap.get(order.assigned_user_id) ?? null) : null}
+                  assignedUsers={toNumericIdArray(order.assigned_user_id)
+                    .map((id) => usersMap.get(id))
+                    .filter((u): u is UserType => !!u)}
                 />
               ))}
             </div>

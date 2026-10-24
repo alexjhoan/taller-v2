@@ -14,8 +14,10 @@ interface CreateOrderPayload {
   failure_description: string;
   /** Lista de repuestos serializada como JSON string (snake_case: name, quantity, unit_price) */
   parts?: string;
-  /** ID del usuario asignado (null = no asignado) */
-  assigned_user_id?: number | null;
+  /** Lista de servicios (mano de obra) serializada como JSON string: [{ description, price }] */
+  service_items?: string;
+  /** JSON string de array de IDs: "[3, 5]" (lista vacía = "[]" = sin asignar) */
+  assigned_user_id?: string;
 }
 
 interface CreateOrderResponseBody {

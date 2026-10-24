@@ -19,6 +19,9 @@ export function withAuth<P extends object>(WrappedComponent: ComponentType<P>, o
     const router = useRouter();
     const { isAuthenticated, user, hydrated } = useUserContext();
 
+    // Rol no permitido: no se renderiza el contenido, solo se redirige
+    const roleDenied = !!(roles && user && !roles.includes(user.role));
+
     useEffect(() => {
       // Esperar a que UserContext hidrate la cookie: si no, un refresco redirigiría
       // a /login antes de saber si hay sesión (y login.tsx terminaría en "/")
@@ -31,12 +34,12 @@ export function withAuth<P extends object>(WrappedComponent: ComponentType<P>, o
         return;
       }
 
-      if (roles && user && !roles.includes(user.role)) {
+      if (roleDenied) {
         router.replace("/unauthorized");
       }
-    }, [hydrated, isAuthenticated, user, router, roles, redirectTo]);
+    }, [hydrated, isAuthenticated, roleDenied, router, redirectTo]);
 
-    if (!isAuthenticated) {
+    if (!isAuthenticated || roleDenied) {
       return (
         <div className='flex min-h-dvh items-center justify-center bg-surface-base'>
           <div className='animate-pulse text-sm text-slate-400'>Cargando...</div>

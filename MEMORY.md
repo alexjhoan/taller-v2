@@ -4,12 +4,16 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 ## Estado actual
 - Next.js 14 Pages Router, React 18, TypeScript, Tailwind, React Query, Notistack.
 - Login: JWT en cookie (`bkBtM0NvMGsmMw`) + cookie de usuario (`bkBtM0NvMGsmMw_u`); restauración con `src/utils/session.ts`.
-- Specs 001–004 aprobadas e implementadas.
+- Specs 001–004 aprobadas e implementadas. Spec 007 (`specs/007-multi-mechanic-assignment/`) implementada: asignación múltiple de mecánicos.
+- Spec 008 (aprobación de repuestos) — frontend COMPLETO (T-1..T-15, reviewer APROBADO RF por RF): helpers en `src/utils/parts.ts`, AdminOrderDetail (admin en `accepted`, persistencia inmediata PATCH + `budget_accepted: 0`, Aceptar/Rechazar con deshacer, paso de precio, badge "Solicitud del técnico" e "Ingresado"), TechnicianOrderDetail (solo borra sus solicitudes no aceptadas, con guardia en `deletePart`), portal filtra `pending`/`rejected` vía `visibleParts` y gating totales por decisión del cliente, dashboard con contador de pendientes (solo admin), historial solo lectura, `API_FRONTEND.md` con el contrato de `parts`, y **44 tests** en verde.
+- **Vocabulario de `approvalStatus` (repuesto) = `pending` → `accepted` → `rejected`** (T-15, cambio de requisito del usuario). `accepted` = aceptado por el ADMIN y visible al cliente para que lo apruebe; la aprobación del CLIENTE es otra cosa (`budget_accepted` + decisiones de sesión del portal). Repuestos creados por el admin (detalle y RECEPCIÓN) nacen `accepted`; los del mecánico nacen `pending`. **OJO**: `approved` sigue siendo un valor de `OrderStatus` (estado de la ORDEN) — no confundirlos.
+- **T-14** cerró un riesgo de pérdida de datos: `assignFallbackPartIds` da `id` de respaldo al cargar en admin/técnico (sin él, `undefined === undefined` hacía que Eliminar/Aceptar afectara a TODOS los repuestos). **NO es end-to-end hasta que el backend PHP cumpla RF-10/RF-11** — hasta entonces el admin verá todos los repuestos como "Ingresado" sin botones (fallback esperado).
 - Componentes: ReceptionCheckinForm, AdminOrderDetail, TechnicianOrderDetail, TechnicianOrderList, WorkOrderList (unificado admin/técnico), OrderCard, EvidenceUploader, ClientQuotationPortal, CreateUserModal, TopBar, OrderStatusButton, Layout, Sidebar.
 - **Nuevos componentes**: EvidenceGallery (carrusel con autoplay, thumbnails, modal lightbox), EvidenceGalleryModal (lightbox con grid de thumbnails), hook useOrderEvidence.
 - UI primitives en `src/components/ui/`.
 - Hooks: useWorkOrders, useDeliveredOrders, useUsers, useVehicles, useCreateOrder, useEvidenceUpload, useWhatsApp, useMediaQuery, useOrderEvidence.
-- `parseWorkOrder` resiliente (JSON corrupto → `[]` + warn). `toNumericId` normaliza FKs string. WorkOrder ahora incluye `evidence?: string[]`.
+- `parseWorkOrder` resiliente (JSON corrupto → `[]` + warn). `toNumericId` normaliza FKs string; `toNumericIdArray` normaliza `assigned_user_id` a `number[]` (acepta JSON string "[3,5]", array o legacy 3/"3"). WorkOrder ahora incluye `evidence?: string[]`.
+- **Asignación múltiple (spec 007)**: `assigned_user_id` es array de IDs; se envía como JSON string `"[3, 5]"` ("[]" = sin asignar). Recepción y AdminOrderDetail usan checkboxes (no select); OrderCard muestra un badge por mecánico; filtro del técnico por inclusión.
 - AdminOrderDetail: header con badge status clickeable (OrderStatusButton con lápiz + modal), OrderStatusSelect eliminado. Status SIEMPRE editable (cualquier usuario, sin restricción de rol).
 - AdminOrderDetail: `updated_by` en PATCH con JSON.stringify({id, firstName, lastName, role}).
 - WorkOrderList: filtro de status con localStorage (`work_orders_status_filter`), default "En taller". Admin ve todas, técnico solo las suyas.
@@ -17,7 +21,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - **EvidenceGallery**: carrusel principal con autoplay (5s), navegación flechas, indicadores dots, strip de thumbnails horizontal. Click abre EvidenceGalleryModal (lightbox) con grid de thumbnails, navegación teclado (ESC, flechas), click fuera para cerrar. Soporta imágenes y videos. Usado en AdminOrderDetail y TechnicianOrderDetail.
 - Sidebar responsive (xs:425px, drawer + topbar con hamburguesa).
 - Reloj TopBar: HH:MM (sin segundos).
-- Tests: 82 tests en `tests/*.test.mjs`, `node --test`.
+- Tests: `tests/ids.test.mjs` (8 tests, `node --test`). Node ≥23 importa `.ts` directo (type stripping), sin alias-resolver.
 - **Audit trail**: `pages/admin/order-log.tsx` con timeline vertical, hook `useOrderAuditLog`, tipos en `src/types/audit.ts`. Botón "Ver Log de Cambios" en AdminOrderDetail.
 - `.env.local`: `NEXT_PUBLIC_API_BASE_URL=http://localhost`, `NEXT_PUBLIC_PORTAL_URL=http://localhost:3000`.
 - `npm run build` pasa. `npm run typecheck` pasa. `npm run lint` no (ESLint no configurado, preexistente).
@@ -28,6 +32,8 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - Backend resuelve login con usuario O email. FKs del backend son strings → `toNumericId()`.
 - `allowedDevOrigins` detecta IPs LAN en runtime (Next 14 no admite `192.168.*`).
 - Subagentes V2: `.opencode/agents/*.md`. Fallback si rate limit: reintentar 1 vez y luego hacer manual.
+- **Skills por agente**: cada agente lista en su prompt las skills que puede cargar con la herramienta `skill` (permiso `skill` en el frontmatter). Espejo `.agents/agents/` idéntico byte a byte. Tabla completa en `AGENTS.md` §Skills (31 skills).
+- **`grill-me` reparada**: el paquete de `mattpocock/skills` instala un stub que redirige a una skill `grilling` que no se incluye. Se reescribió con el contenido real de `grilling` y se eliminó `disable-model-invocation` (dejaba la skill invisible al modelo) y la carpeta `agents/openai.yaml` (para el SDK de OpenAI, inútil aquí).
 - Badge status clickeable (OrderStatusButton) en vez de select nativo — mejor UX en móvil.
 - **Código limpio**: eliminar imports no usados, variables muertas y código huérfano. Regla permanente: si no se usa, se quita.
 - **Anchos unificados**: Recepción `max-w-2xl`, Admin/Técnico `max-w-4xl`, Portal `max-w-md` (móvil-first).
@@ -38,14 +44,15 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 ## Aprendizajes y errores a evitar
 - Campos API snake_case exactos. Offline: `{ status: 503, statusText: 'OfflineMode' }`.
 - Cookie JWT ofuscada: `bkBtM0NvMGsmMw` en `src/utils/const.ts`.
-- Tests con alias `@/`: `register('./alias-resolver.mjs')` + `import()` dinámico.
 - Chrome DevTools MCP: refs caducan tras snapshot. Verificar por DOM, no por imagen.
 - Prueba UI autenticada: cookies dummy + `window.next.router.push(...)`.
 - **EvidenceUploader**: error 401 "Authorization token missing or malformed" ocurre cuando el `fetch` no incluye el JWT. El hook `useEvidenceUpload` y `api.upload` ya envían el token vía `setApiToken()` — asegúrate de llamar `setApiToken(token)` después del login, no solo en el componente evidencia.
 - **getUserMedia** en modal: manejar NotAllowedError (permiso denegado), NotFoundError (sin cámara), OverconstrainedError (cámara trasera no disponible → fallback a frontal). Limpiar tracks al cerrar modal.
 
 ## Próximos pasos
-- Log de cambios (audit trail) del plan propuesto (`specs/005-audit-log/plan.md`).
+- **Spec 008 — bloqueante para end-to-end**: backend PHP/MariaDB debe cumplir **RF-10** (`PATCH /api/orders` guarda `parts` verbatim; `GET /api/orders` devuelve `id`, `approvalStatus`, `requestedByTechnician`, `criticality`) y **RF-11** (`GET /api/public/order/{token}` filtra server-side a solo repuestos aprobados/sin estado). El frontend ya está preparado: al llegar, los botones de aprobación aparecen solos sin tocar código.
+- Verificación manual pendiente: probar el flujo completo (mecánico solicita → admin aprueba con precio → contador → portal) cuando el backend cumpla RF-10.
 - Backend: POST /api/orders/{id}/send-email.
 - Columna `username` en tabla users.
 - Verificar visualmente repuestos en checkin.
+- Limpieza opcional: interfaces legacy `RequiredPart`/`TechnicianPartRequest` en `src/types/index.ts` parecen huérfanas (previas a la spec 008).

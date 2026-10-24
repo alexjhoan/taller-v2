@@ -4,6 +4,8 @@
 // la conexión. Implementación sin dependencias externas.
 // ============================================================
 
+import { generateShortUid } from '@/utils/uid';
+
 const QUEUE_KEY = 'queue_offline';
 
 export interface QueuedRequest {
@@ -40,7 +42,7 @@ export const localForage = {
     const queue = getQueue();
     const newRequest: QueuedRequest = {
       ...request,
-      id: crypto.randomUUID(),
+      id: generateShortUid(),
       timestamp: Date.now(),
       retryCount: 0,
     };

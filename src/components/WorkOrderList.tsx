@@ -3,9 +3,12 @@ import { FileText, Search, RefreshCw, Loader2, AlertCircle } from 'lucide-react'
 import { CustomCard } from '@/components/ui/CustomCard';
 import { CustomInput } from '@/components/ui/CustomInput';
 import { CustomButton } from '@/components/ui/CustomButton';
-import { useUsersMap } from '@/hooks/useUsers';
+import { CustomBadge } from '@/components/ui/CustomBadge';
+import { useUsersMap, User as UserType } from '@/hooks/useUsers';
 import { WorkOrder } from '@/hooks/useWorkOrders';
 import { OrderCard } from '@/components/OrderCard';
+import { toNumericIdArray } from '@/utils/ids';
+import { countOrdersWithPendingParts } from '@/utils/parts';
 import {
   ORDER_STATUS_OPTIONS,
   ALL_STATUSES_VALUE,
@@ -36,6 +39,12 @@ interface WorkOrderListProps {
   /** Refresca la lista; si no se pasa, no se muestra el botón. */
   onRefresh?: () => void;
   title?: string;
+  /**
+   * RF-8 — Muestra el contador de órdenes con repuestos pendientes
+   * junto al título. Solo lo pasa el dashboard admin; la vista del
+   * técnico NO lo ve (por defecto false).
+   */
+  showPendingPartsCounter?: boolean;
 }
 
 export function WorkOrderList({
@@ -46,6 +55,7 @@ export function WorkOrderList({
   isFetching,
   onRefresh,
   title = 'Lista de Órdenes',
+  showPendingPartsCounter = false,
 }: WorkOrderListProps) {
   const usersMap = useUsersMap();
   const [searchQuery, setSearchQuery] = useState('');
@@ -71,10 +81,28 @@ export function WorkOrderList({
       )
     : statusFiltered;
 
+  // RF-8 — Órdenes (de las ya cargadas por props) con al menos un
+  // repuesto en "pending"; se recalcula solo al refrescar la lista.
+  // Si el padre no lo pidió (vista del técnico) no se calcula ni se pinta.
+  const pendingPartsCount = showPendingPartsCounter
+    ? countOrdersWithPendingParts(orders)
+    : 0;
+
   return (
     <CustomCard>
       <div className='mb-4 flex flex-wrap items-center justify-between gap-3'>
-        <h3 className='text-sm font-bold text-slate-800'>{title}</h3>
+        <div className='flex flex-wrap items-center gap-2'>
+          <h3 className='text-sm font-bold text-slate-800'>{title}</h3>
+          {/* RF-8 — Aviso al admin de solicitudes de repuesto pendientes.
+              Con 0 no se muestra nada: no hay nada que actuar. */}
+          {showPendingPartsCounter && pendingPartsCount > 0 && (
+            <CustomBadge variant='warning' dot>
+              {pendingPartsCount === 1
+                ? '1 solicitud de repuesto pendiente'
+                : `${pendingPartsCount} solicitudes de repuesto pendientes`}
+            </CustomBadge>
+          )}
+        </div>
         <div className='flex items-center gap-2'>
           <select
             id='work-orders-status-filter'
@@ -134,7 +162,9 @@ export function WorkOrderList({
               order={order}
               onSelect={onSelectOrder}
               dateLabel='created'
-              assignedUser={order.assigned_user_id ? (usersMap.get(order.assigned_user_id) ?? null) : null}
+              assignedUsers={toNumericIdArray(order.assigned_user_id)
+                .map((id) => usersMap.get(id))
+                .filter((u): u is UserType => !!u)}
             />
           ))}
         </div>

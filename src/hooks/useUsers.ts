@@ -33,7 +33,8 @@ export function useUsers() {
 }
 
 /**
- * Mapa id → User para match O(1) con assigned_user_id.
+ * Mapa id → User para match O(1) con assigned_user_id (ahora un array de
+ * IDs de mecánicos; se compara con toNumericIdArray / usersMap.get(id)).
  * React Query ya cachea la respuesta (staleTime 5 min), así que
  * funciona como un "contexto" de usuarios sin estado extra ni IndexedDB.
  */
@@ -43,7 +44,8 @@ export function useUsersMap() {
     const map = new Map<number, User>();
     users?.forEach((u) => {
       // El backend puede devolver id como string ("3"); la clave debe ser
-      // numérica para que usersMap.get(order.assigned_user_id) coincida.
+      // numérica para que usersMap.get(id) coincida con los IDs del array
+      // normalizado de assigned_user_id (toNumericIdArray).
       const id = toNumericId(u.id);
       if (id !== null) map.set(id, u);
     });

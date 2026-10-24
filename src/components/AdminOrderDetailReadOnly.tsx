@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   Car,
@@ -8,10 +10,16 @@ import {
   Package,
   CheckCircle2,
   Clock,
+  Image,
 } from 'lucide-react';
 import { CustomCard } from '@/components/ui/CustomCard';
 import { CustomButton } from '@/components/ui/CustomButton';
 import { CustomBadge } from '@/components/ui/CustomBadge';
+import { CustomDialog } from '@/components/ui/CustomDialog';
+import { EvidenceGallery } from '@/components/EvidenceGallery';
+import { OrderStatusButton } from '@/components/OrderStatusButton';
+import { useApiClient } from '@/services/apiClient';
+import { endpoints } from '@/services/api';
 import { WorkOrder } from '@/hooks/useWorkOrders';
 
 // --- Componente ---
@@ -23,36 +31,93 @@ interface AdminOrderDetailReadOnlyProps {
 
 export function AdminOrderDetailReadOnly({ order, onBack }: AdminOrderDetailReadOnlyProps) {
   const router = useRouter();
+  const apiClient = useApiClient();
+  const queryClient = useQueryClient();
+
   const checklist = Array.isArray(order.checklist) ? order.checklist : [];
   const parts = Array.isArray(order.parts) ? order.parts : [];
+  const evidence = Array.isArray(order.evidence) ? order.evidence : [];
   const completedCount = checklist.filter((i) => i.completed).length;
   const progress = checklist.length > 0 ? Math.round((completedCount / checklist.length) * 100) : 0;
 
-  const getOrderStatusBadge = (status: string) => {
-    const statusMap: Record<string, { label: string; variant: 'success' | 'warning' | 'danger' | 'info' | 'neutral' }> = {
-      received: { label: 'Recibido', variant: 'info' },
-      diagnosing: { label: 'Diagnóstico', variant: 'warning' },
-      awaiting_approval: { label: 'Esperando aprobación', variant: 'warning' },
-      approved: { label: 'Aprobado', variant: 'success' },
-      in_progress: { label: 'En taller', variant: 'info' },
-      ready: { label: 'Listo', variant: 'success' },
-      delivered: { label: 'Entregado', variant: 'success' },
-      cancelled: { label: 'Cancelado', variant: 'danger' },
-    };
-    const config = statusMap[status] || { label: status, variant: 'neutral' as const };
-    return <CustomBadge variant={config.variant} dot>{config.label}</CustomBadge>;
+  // Estado local del status: sincronizado con la orden y actualizado tras el PATCH.
+  const [status, setStatus] = useState<string>(order.status);
+  // Comentario de entrega/cancelación: se sincroniza con la orden y se
+  // actualiza localmente tras guardar para reflejarlo sin recargar la lista.
+  const [withdrawalComment, setWithdrawalComment] = useState<string | null>(order.withdrawal_comment ?? null);
+  // Modal de confirmación para Entregado / Cancelado (requiere comentario).
+  // Mientras esté abierto, NO se persiste nada: solo Cancelar o Guardar.
+  const [commentTarget, setCommentTarget] = useState<'delivered' | 'cancelled' | null>(null);
+  const [comment, setComment] = useState('');
+  const [isCommentSaving, setIsCommentSaving] = useState(false);
+
+  useEffect(() => {
+    setStatus(order.status);
+  }, [order.status]);
+
+  // Mantener sincronizado el comentario mostrado con el prop de la orden.
+  useEffect(() => {
+    setWithdrawalComment(order.withdrawal_comment ?? null);
+  }, [order]);
+
+  // --- Entrega / Cancelación con comentario ---
+
+  const openCommentModal = (newStatus: string) => {
+    if (newStatus !== 'delivered' && newStatus !== 'cancelled') return;
+    setCommentTarget(newStatus);
+    setComment('');
   };
 
-  const getPartStatusBadge = (status: string) => {
+  const closeCommentModal = () => {
+    setCommentTarget(null);
+    setComment('');
+  };
+
+  // Persiste el cambio de estado + comentario. Solo cierra el modal si el
+  // PATCH es exitoso; en error permanece abierto.
+  const handleCommentSave = async () => {
+    if (!commentTarget) return;
+
+    setIsCommentSaving(true);
+    try {
+      await apiClient.patch(
+        endpoints.orders,
+        {
+          id: order.id,
+          status: commentTarget,
+          withdrawal_comment: comment,
+        },
+        {
+          successMessage:
+            commentTarget === 'delivered'
+              ? 'Orden entregada exitosamente'
+              : 'Orden cancelada exitosamente',
+        },
+      );
+
+      setStatus(commentTarget);
+      setWithdrawalComment(comment);
+      queryClient.invalidateQueries({ queryKey: ['work_orders'] });
+      closeCommentModal();
+    } catch {
+      // El error ya se muestra globalmente (apiClient)
+    } finally {
+      setIsCommentSaving(false);
+    }
+  };
+
+  // approvalStatus es opcional (repuestos legacy/checkin, RF-10 interim);
+  // sin estado se muestra el badge neutro "Ingresado" (decisión 12, T-11).
+  const getPartStatusBadge = (status: string | undefined) => {
     switch (status) {
-      case 'approved':
-        return <CustomBadge variant="success" dot>Aprobado</CustomBadge>;
+      case 'accepted':
+        return <CustomBadge variant="success" dot>Aceptado</CustomBadge>;
       case 'pending':
         return <CustomBadge variant="warning" dot>Pendiente</CustomBadge>;
       case 'rejected':
         return <CustomBadge variant="danger" dot>Rechazado</CustomBadge>;
       default:
-        return <CustomBadge variant="neutral">{status}</CustomBadge>;
+        return <CustomBadge variant="neutral">Ingresado</CustomBadge>;
     }
   };
 
@@ -73,7 +138,12 @@ export function AdminOrderDetailReadOnly({ order, onBack }: AdminOrderDetailRead
             </p>
           </div>
         </div>
-        {getOrderStatusBadge(order.status)}
+        <OrderStatusButton
+          orderId={order.id}
+          currentStatus={status}
+          onStatusChange={(newStatus) => setStatus(newStatus)}
+          onStatusWithComment={openCommentModal}
+        />
       </div>
 
       {/* Datos del Vehículo */}
@@ -258,7 +328,7 @@ export function AdminOrderDetailReadOnly({ order, onBack }: AdminOrderDetailRead
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-slate-800 truncate">{part.name}</p>
                   <p className="mt-0.5 text-xs font-medium text-slate-400">
-                    Ref: {part.reference} · Cant: {part.quantity}
+                    Cant: {part.quantity}
                   </p>
                   {part.notes && (
                     <p className="mt-2 text-xs italic text-slate-500">&ldquo;{part.notes}&rdquo;</p>
@@ -270,6 +340,33 @@ export function AdminOrderDetailReadOnly({ order, onBack }: AdminOrderDetailRead
           </div>
         </CustomCard>
       )}
+
+      {/* Evidencias */}
+      {evidence.length > 0 && (
+        <CustomCard>
+          <div className="mb-4 flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50">
+              <Image className="h-4 w-4 text-brand-600" />
+            </div>
+            <h2 className="text-sm font-bold text-slate-800">Evidencias cargadas ({evidence.length})</h2>
+          </div>
+          <EvidenceGallery evidence={evidence} />
+        </CustomCard>
+      )}
+
+      {/* Comentario de entrega/cancelación */}
+      {withdrawalComment && withdrawalComment.trim() !== '' && (
+        <CustomCard>
+          <div className="mb-3 flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50">
+              <FileText className="h-4 w-4 text-brand-600" />
+            </div>
+            <h2 className="text-sm font-bold text-slate-800">Comentario de entrega/cancelación</h2>
+          </div>
+          <p className="whitespace-pre-wrap text-sm text-slate-600">{withdrawalComment}</p>
+        </CustomCard>
+      )}
+
       {/* Ver historial de cambios */}
       <CustomButton
         variant='secondary'
@@ -278,6 +375,44 @@ export function AdminOrderDetailReadOnly({ order, onBack }: AdminOrderDetailRead
       >
         Ver Log de Cambios
       </CustomButton>
+
+      {/* Modal de confirmación de entrega/cancelación (con comentario) */}
+      <CustomDialog
+        open={commentTarget !== null}
+        onClose={closeCommentModal}
+        title={commentTarget === 'delivered' ? 'Confirmar entrega' : 'Confirmar cancelación'}
+      >
+        <div className='space-y-4'>
+          <div>
+            <label className='mb-1.5 block text-sm font-semibold text-slate-700'>Comentario</label>
+            <textarea
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              rows={4}
+              className='input-field resize-none'
+              placeholder={
+                commentTarget === 'delivered'
+                  ? 'Ej: Vehículo retirado por el cliente. Se explicaron las reparaciones realizadas.'
+                  : 'Ej: El cliente canceló el servicio por motivos personales.'
+              }
+            />
+          </div>
+          <div className='flex gap-3'>
+            <CustomButton type='button' variant='secondary' className='flex-1' onClick={closeCommentModal}>
+              Cancelar
+            </CustomButton>
+            <CustomButton
+              type='button'
+              className='flex-1'
+              onClick={handleCommentSave}
+              isLoading={isCommentSaving}
+              disabled={isCommentSaving}
+            >
+              Guardar
+            </CustomButton>
+          </div>
+        </div>
+      </CustomDialog>
     </div>
   );
 }

@@ -93,6 +93,83 @@ function translateStatus(value: string): string {
   return statusLabels[value] ?? value;
 }
 
+// --- Desglose de valores JSON en el log de cambios ---
+
+/**
+ * Detecta si un valor de cambio (from/to) es un JSON string con contenido
+ * estructurado (array u objeto) y lo parsea. Los JSON vacíos o inválidos se
+ * tratan como texto plano.
+ */
+function parseChangeValue(value: string): { isJson: boolean; parsed?: unknown } {
+  if (typeof value !== 'string') return { isJson: false };
+  try {
+    const parsed = JSON.parse(value);
+    if (typeof parsed === 'object' && parsed !== null) return { isJson: true, parsed };
+    return { isJson: false };
+  } catch {
+    return { isJson: false };
+  }
+}
+
+function formatScalar(value: unknown): string {
+  if (value === null || value === undefined) return '—';
+  if (typeof value === 'boolean') return value ? 'sí' : 'no';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+/**
+ * Convierte un JSON desglosado a texto legible:
+ * - array de objetos (parts, service_items, checklist): una línea por item con sus campos
+ * - objeto: key: value por línea
+ * - escalar: su valor
+ */
+function formatJsonAsText(parsed: unknown): string {
+  if (Array.isArray(parsed)) {
+    if (parsed.length === 0) return '—';
+    return parsed
+      .map((item) => {
+        if (item !== null && typeof item === 'object') {
+          const fields = Object.entries(item as Record<string, unknown>)
+            .map(([key, value]) => `${key}: ${formatScalar(value)}`)
+            .join(' — ');
+          return `• ${fields}`;
+        }
+        return `• ${formatScalar(item)}`;
+      })
+      .join('\n');
+  }
+  if (parsed !== null && typeof parsed === 'object') {
+    const entries = Object.entries(parsed as Record<string, unknown>);
+    if (entries.length === 0) return '—';
+    return entries
+      .map(([key, value]) => `${key}: ${formatScalar(value)}`)
+      .join('\n');
+  }
+  return formatScalar(parsed);
+}
+
+interface ChangeValueProps {
+  value: string;
+  className: string;
+}
+
+/**
+ * Renderiza un cambio (from/to). Si el valor es JSON lo desglosa en un <pre>
+ * legible; si no, lo traduce como antes (status/labels).
+ */
+function ChangeValue({ value, className }: ChangeValueProps) {
+  const { isJson, parsed } = parseChangeValue(value);
+  if (!isJson) {
+    return <span className={className}>{translateStatus(value) || '—'}</span>;
+  }
+  return (
+    <pre className={`${className} max-w-full whitespace-pre-wrap font-mono text-xs`}>
+      {formatJsonAsText(parsed)}
+    </pre>
+  );
+}
+
 // --- Componente principal ---
 
 function AdminOrderLogPage() {
@@ -199,15 +276,17 @@ function AdminOrderLogPage() {
 
                         {/* Cambios */}
                         {entry.changes && Object.keys(entry.changes).length > 0 && (
-                          <div className='mt-3 space-y-1.5'>
+                          <div className='mt-3 space-y-2'>
                             {Object.entries(entry.changes).map(([field, change]) => (
-                              <div key={field} className='flex flex-wrap items-center gap-2 text-sm'>
+                              <div key={field} className='text-sm'>
                                 <span className='font-medium text-slate-600 capitalize'>
-                                  {field.replace(/_/g, " ")}:
+                                  {field.replace(/_/g, ' ')}:
                                 </span>
-                                <span className='text-red-500 line-through'>{translateStatus(change.from) || "—"}</span>
-                                <span className='text-slate-400'>→</span>
-                                <span className='text-emerald-600 font-medium'>{translateStatus(change.to) || "—"}</span>
+                                <div className='mt-0.5 flex flex-wrap items-start gap-2'>
+                                  <ChangeValue value={change.from} className='text-red-500 line-through' />
+                                  <span className='text-slate-400'>→</span>
+                                  <ChangeValue value={change.to} className='text-emerald-600 font-medium' />
+                                </div>
                               </div>
                             ))}
                           </div>
