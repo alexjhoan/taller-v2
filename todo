@@ -1,0 +1,38 @@
+[] agregar un campo de status en progreso
+
+[] dividir las fotos de recepcion y en proceso
+[] quitar descripcion dela falla
+
+[] respuesta y aprobacion (por el cliente) del diagnostico debajo falla editable por el admin
+
+
+son 2 aprobacion primero del trabajo y 2do respuestos
+pizzeria
+
+1. caja se hace la comanda
+
+se le pide el nombre del cliente y la orden
+
+agrear un campo de opciones adicionales para pizzas o otras cosas
+
+el sistema tiene que ser rapido y por pasos iniciando por el tamaño, tipo, y adicionales y bebidas
+
+2. cocinero
+
+3. hornero
+
+4. se entrega la pizza
+
+se puede hacer un link para que los clientes sepan en cuanto tiempo sale su pizza
+
+tambien ver como hacer un sistema publico para que pizan su pizza con manejo de ubicacion (obligatoria)
+
+manejar inventario de refresco (para empezar)
+
+un dashboard en el que se vean las ventas del dia, semana o mes
+
+payroll de gastos como empleados
+
+preguntar tiempo aproximado por pizza la intencion es que si hay muchos pedidos y el cocinero esta aboyado agregar un tiempo extra de espera por la pizza
+
+un QR o algo para que el cliente pueda crear su pizza

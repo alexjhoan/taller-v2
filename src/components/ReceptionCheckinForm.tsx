@@ -524,7 +524,7 @@ export function ReceptionCheckinForm() {
             <div className='flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50'>
               <FileText className='h-4 w-4 text-brand-600' />
             </div>
-            <h2 className='text-sm font-bold text-slate-800'>Detalles del Vehículo</h2>
+            <h2 className='text-sm font-bold text-slate-800'>Condiciónes del Vehículo</h2>
           </div>
           <label className='mb-1.5 block text-sm font-semibold text-slate-700'>
             Observaciones adicionales (color, accesorios, daños visibles, etc.)
@@ -654,7 +654,7 @@ export function ReceptionCheckinForm() {
             <div className='flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50'>
               <ClipboardList className='h-4 w-4 text-brand-600' />
             </div>
-            <h2 className='text-sm font-bold text-slate-800'>Checklist</h2>
+            <h2 className='text-sm font-bold text-slate-800'>Trabajo a realizar</h2>
           </div>
 
           {/* Input manual */}

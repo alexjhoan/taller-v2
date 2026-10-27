@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Clock, Menu } from 'lucide-react';
+import { Bell, Clock, Menu, ExternalLink } from 'lucide-react';
+import { useRouter } from 'next/router';
 import { useUserContext } from '@/context/UserContext';
 import { CustomBadge } from '@/components/ui/CustomBadge';
+import { CustomButton } from '@/components/ui/CustomButton';
+import { useUnreadAlerts, useMarkAlertAsRead, useMarkAllAlertsAsRead } from '@/hooks/useAlerts';
+import { NotificationModal } from '@/components/NotificationModal';
+import { formatUnreadCount } from '@/utils/alerts';
 
 const roleLabels: Record<string, string> = {
   admin: 'Administrador',
@@ -28,25 +33,50 @@ interface TopBarProps {
 /**
  * Única barra superior (sticky, top-0). La renderiza el Layout.
  *
- * - Móvil (<425px): hamburguesa (izq) | reloj + avatar (der). Al tocar el
- *   avatar se despliega un menú con nombre completo y, debajo, el rol.
- * - Desktop (≥425px): avatar + nombre + badge de rol (izq) | reloj (der),
+ * - Móvil (<425px): hamburguesa (izq) | campana + reloj + avatar (der).
+ * - Desktop (≥425px): avatar + nombre + badge de rol (izq) | campana + reloj (der),
  *   sin hamburguesa (la navegación vive en el sidebar).
+ * - La campana SOLO se renderiza para rol `admin`.
  */
 export function TopBar({ onOpenMenu, isMenuOpen }: TopBarProps) {
   const { user } = useUserContext();
-  // null en el primer render (SSR + hidratación) para evitar mismatch; se rellena en el mount
+  const router = useRouter();
+
+  // Hora local (null en primer render para evitar mismatch SSR/hidratación)
   const [time, setTime] = useState<string | null>(null);
+
+  // Menú de usuario (solo móvil)
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
+  // Campana de notificaciones (solo admin)
+  const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
+  const bellRef = useRef<HTMLButtonElement>(null);
+
+  // Datos de alertas no leídas (solo para admin)
+  const isAdmin = user?.role === 'admin';
+  const {
+    data: alerts,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useUnreadAlerts(isAdmin);
+
+  const unreadCount = alerts?.length ?? 0;
+
+  // Mutaciones
+  const { mutate: markAsRead } = useMarkAlertAsRead();
+  const { mutate: markAllAsRead } = useMarkAllAlertsAsRead();
+
+  // Hora actual
   useEffect(() => {
     setTime(formatTime(new Date()));
     const intervalId = setInterval(() => setTime(formatTime(new Date())), 1000);
     return () => clearInterval(intervalId);
   }, []);
 
-  // Cerrar el menú de usuario al hacer clic fuera o con Escape
+  // Cerrar menú de usuario al click fuera o Escape
   useEffect(() => {
     if (!isUserMenuOpen) return;
     const handlePointerDown = (event: PointerEvent) => {
@@ -65,10 +95,49 @@ export function TopBar({ onOpenMenu, isMenuOpen }: TopBarProps) {
     };
   }, [isUserMenuOpen]);
 
+  // Cerrar modal de notificaciones al click fuera (lo maneja CustomDialog con disableBackdropClose=false)
+  // Pero aseguramos que Escape también lo cierre y devuelva foco a la campana
+  useEffect(() => {
+    if (!isNotificationModalOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsNotificationModalOpen(false);
+        bellRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isNotificationModalOpen]);
+
   const roleLabel = user ? roleLabels[user.role] ?? user.role : '';
-  // Nombre completo (firstName + lastName); si no hay datos, "Usuario"
   const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
   const initial = (user?.firstName ?? '?').charAt(0).toUpperCase();
+
+  // Handlers de notificaciones
+  const handleMarkRead = (alertId: string, orderId: string | null) => {
+    // Según spec: click = marcar leída + navegar. Si el PATCH falla, navega igual.
+    const doNavigate = () => {
+      if (orderId) {
+        router.push(`/admin/dashboard?selectedOrderId=${orderId}`, undefined, { shallow: true });
+      }
+    };
+    markAsRead(alertId, {
+      onSuccess: doNavigate,
+      onError: doNavigate, // navega aunque falle el marcado (spec: navega igual)
+    });
+  };
+
+  const handleMarkAllRead = () => {
+    markAllAsRead();
+  };
+
+  const handleRetry = () => {
+    refetch();
+  };
+
+  const handleViewAll = () => {
+    router.push('/notifications?tab=unread', undefined, { shallow: true });
+  };
 
   return (
     <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 shadow-soft">
@@ -106,11 +175,53 @@ export function TopBar({ onOpenMenu, isMenuOpen }: TopBarProps) {
         </div>
       </div>
 
-      {/* Derecha: reloj + avatar (móvil) */}
+      {/* Derecha: campana (admin) + reloj + avatar (móvil) */}
       <div className="flex shrink-0 items-center gap-3">
+        {/* Campana de notificaciones — solo admin */}
+        {isAdmin && (
+          <div className="relative">
+            <button
+              ref={bellRef}
+              type="button"
+              onClick={() => setIsNotificationModalOpen((prev) => !prev)}
+              aria-label={unreadCount > 0 ? `Notificaciones, ${unreadCount} sin leer` : 'Notificaciones'}
+              aria-haspopup="dialog"
+              aria-expanded={isNotificationModalOpen}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-soft transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              <Bell className="h-5 w-5" />
+              {formatUnreadCount(unreadCount) && (
+                <CustomBadge
+                  variant="danger"
+                  dot
+                  className="absolute -top-1 -right-1 min-w-[18px] h-5 text-xs px-1.5"
+                >
+                  {formatUnreadCount(unreadCount)}
+                </CustomBadge>
+              )}
+            </button>
+
+            {/* Modal de notificaciones */}
+            <NotificationModal
+              open={isNotificationModalOpen}
+              onClose={() => setIsNotificationModalOpen(false)}
+              alerts={alerts ?? []}
+              onMarkRead={handleMarkRead}
+              onMarkAllRead={handleMarkAllRead}
+              onViewAll={handleViewAll}
+              isLoading={isLoading}
+              isError={isError}
+              error={error}
+              onRetry={handleRetry}
+              bellRef={bellRef}
+            />
+          </div>
+        )}
+
+        {/* Reloj */}
         <div className="flex items-center gap-1.5 text-slate-500">
           <Clock className="h-4 w-4" />
-          <span className="text-sm font-semibold tabular-nums" aria-label="Hora actual">
+          <span className="text-sm font-semibold tabular-nums xs:hidden" aria-label={time ? `Hora actual: ${time}` : 'Hora actual'}>
             {time ?? '--:--'}
           </span>
         </div>

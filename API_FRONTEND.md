@@ -663,19 +663,26 @@ La operación actualiza `budget_items.customer_decision` y crea un registro en `
 
 Rol: `admin`.
 
-#### Respuesta `200`
+#### Parámetros de consulta
+
+| Parámetro | Tipo | Descripción |
+|---|---|---|
+| `unread` | `1` \| omitido | Si `unread=1`, devuelve **solo** alertas con `read_at IS NULL` (pendientes), ordenadas por `created_at DESC, id DESC`, máximo **50** filas. Sin el parámetro, devuelve todas las alertas (comportamiento legacy). |
+
+#### Respuesta `200` (con `?unread=1`)
 
 ```json
 {
   "status": 200,
   "body": [
     {
-      "id": 1,
-      "order_id": 25,
-      "type": "customer_decision",
-      "message": "El cliente actualizo la decision del presupuesto",
+      "id": "12",
+      "order_id": "47",
+      "triggered_by_user_id": "3",
+      "type": "part_requested",
+      "message": "Carlos pidió \"Filtro de aceite\" en la orden HD668JF (Juan Pérez).",
       "read_at": null,
-      "created_at": "2026-09-22 12:00:00"
+      "created_at": "2026-10-23 09:41:00"
     }
   ],
   "statusText": "success"
@@ -687,11 +694,100 @@ Campos de `alerts`:
 ```text
 id
 order_id
+triggered_by_user_id   -- NUEVO: ID del usuario que generó la acción (FK a users.id, nullable)
 type
 message
 read_at
 created_at
 ```
+
+- `id` y `order_id` pueden serializarse como string (`"12"`, `"47"`); el frontend los tolera.
+- `triggered_by_user_id`: quién realizó la acción que generó la alerta (admin, mecánico o cliente). `null` si no aplica o no se pudo determinar.
+- `type` válidos (nuevos, Spec 009):
+  - `order_created` — Nueva orden creada (por mecánico o recepción; si la crea un admin, no se alerta).
+  - `order_status_changed` — La orden cambió de estado.
+  - `part_requested` — Un mecánico solicitó un repuesto (`approvalStatus: "pending"`, `requestedByTechnician: true`).
+  - `budget_accepted` — El cliente aceptó el presupuesto (transición `budget_accepted: 0 → 1`).
+  - `budget_rejected` — El cliente rechazó al menos un ítem del presupuesto.
+  - `customer_decision` — Legacy (ya existe en BD). Se tolera en UI con etiqueta "Decisión del cliente"; no se vuelve a emitir.
+
+### PATCH `/api/alerts`
+
+Rol: `admin`.
+
+Marca una alerta como leída (fija `read_at = NOW()`).
+
+#### Payload
+
+```json
+{ "id": 7 }
+```
+
+#### Respuesta `200`
+
+```json
+{
+  "status": 200,
+  "statusText": "success",
+  "body": {
+    "id": "7",
+    "order_id": "31",
+    "triggered_by_user_id": "5",
+    "type": "customer_decision",
+    "message": "El cliente actualizo la decision del presupuesto",
+    "read_at": "2026-10-23 09:55:12",
+    "created_at": "2026-10-17 14:08:01"
+  }
+}
+```
+
+- El frontend **nunca** envía `read_at`; el backend lo fija con `NOW()`.
+- Idempotente: si ya estaba leída, responde `200` sin cambiar `read_at`.
+- `404` si el `id` no existe. `422` si falta `id` o no es numérico.
+
+### POST `/api/alerts/read-all`
+
+Rol: `admin`.
+
+Marca **todas** las alertas pendientes (`read_at IS NULL`) como leídas.
+
+#### Payload
+
+Cuerpo vacío o `{}`.
+
+#### Respuesta `200`
+
+```json
+{
+  "status": 200,
+  "statusText": "success",
+  "body": { "updated": 3 }
+}
+```
+
+- Si no había pendientes, responde `200` con `{ "updated": 0 }`.
+
+### Reglas de generación (server-side)
+
+El backend escribe en `alerts` tras los eventos siguientes (comparando estado anterior vs. nuevo para idempotencia):
+
+1. **`order_created`** — `POST /api/orders` exitoso. Si `created_by` es admin → **no** alerta. Si es mecánico o recepción → alerta `order_created`.
+2. **`part_requested`** — `PATCH /api/orders` con diff de `parts`: repuesto nuevo con `requestedByTechnician === true` y `approvalStatus === "pending"` que no existía antes. Se usa `id` del repuesto (o hash nombre+cantidad) para deduplicar.
+3. **`budget_accepted`** — `PATCH /api/orders` con `budget_accepted: 0 → 1`. Guarda anti-duplicado: si ya existe `budget_accepted` pendiente para esa orden, no inserta otra (el portal puede haberla creado un segundo antes). Spec 008 reinicia `budget_accepted` a `0` al cambiar repuestos, así que una aceptación posterior vuelve a alertar.
+4. **`order_status_changed`** — `PATCH /api/orders` con `status` distinto al anterior. Mensaje incluye estado legible (`received`→"Recibido", `diagnosing`→"En diagnóstico", `awaiting_approval`→"Esperando aprobación", `approved`→"Aprobado", `in_progress`→"En reparación", `ready`→"Listo", `delivered`→"Entregado", `cancelled`→"Cancelado").
+5. **`budget_rejected` / `budget_accepted`** — `POST /api/public/order/{token}/decision`: si algún ítem `rejected` → `budget_rejected`; si todos `accepted` → `budget_accepted` (reemplaza el `customer_decision` genérico). Aplica misma guarda anti-duplicado para `budget_accepted`.
+
+### Mensajes por tipo (referencia)
+
+| `type` | `message` |
+|---|---|
+| `order_created` | `Nueva orden de {customer_name} ({vehicle_plate}).` |
+| `order_status_changed` | `La orden {vehicle_plate} pasó a "{estado legible}".` |
+| `part_requested` | `{mecánico} pidió "{repuesto}" en la orden {vehicle_plate} ({customer_name}).` |
+| `budget_accepted` | `El cliente aceptó el presupuesto de la orden {vehicle_plate} ({monto}).` |
+| `budget_rejected` | `{customer_name} rechazó {n} ítem(s) del presupuesto de la orden {vehicle_plate}.` |
+
+> El mensaje debe ser accionable y autocontenido (cliente, placa y dato clave), truncado a 255 caracteres. No hay columna `title`.
 
 ## 9. WhatsApp
 
