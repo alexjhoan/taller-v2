@@ -21,6 +21,9 @@ import {
   Wrench,
   Image,
   Clock,
+  ChevronUp,
+  ChevronDown,
+  MessageSquare,
 } from "lucide-react";
 import { CustomCard } from "@/components/ui/CustomCard";
 import { CustomButton } from "@/components/ui/CustomButton";
@@ -81,6 +84,7 @@ interface ChecklistItem {
   category: string;
   priority: string;
   completed: boolean;
+  notes?: string; // Campo opcional para notas de ejecución
 }
 
 // Canal de contacto usado en el modal de confirmación de envío
@@ -143,7 +147,12 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
   const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
   const [pricePartTarget, setPricePartTarget] = useState<PartItem | null>(null);
   const [pendingPriceValue, setPendingPriceValue] = useState<number>(0);
-  const [newCheckItem, setNewCheckItem] = useState({ title: "", category: "DIAGNOSTICO", priority: "MEDIA" });
+  const [newCheckItem, setNewCheckItem] = useState({
+    title: "",
+    category: "DIAGNOSTICO",
+    priority: "MEDIA",
+    notes: "",
+  });
   const [contactConfirm, setContactConfirm] = useState<{
     channel: ContactChannel;
     message: string;
@@ -158,6 +167,15 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
   // Comentario de entrega/cancelación: se sincroniza con la orden y se
   // actualiza localmente tras guardar para reflejarlo sin recargar la lista.
   const [withdrawalComment, setWithdrawalComment] = useState<string | null>(order.withdrawal_comment ?? null);
+
+  // Estados para cards expandibles
+  const [isVehicleExpanded, setIsVehicleExpanded] = useState(true);
+  const [isClientExpanded, setIsClientExpanded] = useState(true);
+
+  // Estado para modal de notas del checklist item
+  const [editingCheckItemNotes, setEditingCheckItemNotes] = useState<ChecklistItem | null>(null);
+  const [checkItemNotes, setCheckItemNotes] = useState("");
+  const [isCheckItemNotesModalOpen, setIsCheckItemNotesModalOpen] = useState(false);
 
   // Items de servicio (mano de obra) — lista editable
   const [serviceItems, setServiceItems] = useState<
@@ -270,9 +288,7 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
         },
         {
           successMessage:
-            commentTarget === "delivered"
-              ? "Orden entregada exitosamente"
-              : "Orden cancelada exitosamente",
+            commentTarget === "delivered" ? "Orden entregada exitosamente" : "Orden cancelada exitosamente",
         },
       );
 
@@ -438,7 +454,10 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
   };
 
   const handleDeletePart = async (partId: string) => {
-    await persistParts(parts, parts.filter((p) => p.id !== partId));
+    await persistParts(
+      parts,
+      parts.filter((p) => p.id !== partId),
+    );
   };
 
   /**
@@ -528,10 +547,11 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
       category: newCheckItem.category,
       priority: newCheckItem.priority,
       completed: false,
+      notes: newCheckItem.notes?.trim() || undefined,
     };
 
     setChecklist([...checklist, newItem]);
-    setNewCheckItem({ title: "", category: "DIAGNOSTICO", priority: "MEDIA" });
+    setNewCheckItem({ title: "", category: "DIAGNOSTICO", priority: "MEDIA", notes: "" });
     setIsChecklistModalOpen(false);
   };
 
@@ -541,6 +561,7 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
       title: item.title,
       category: item.category,
       priority: item.priority,
+      notes: item.notes || "",
     });
     setIsChecklistModalOpen(true);
   };
@@ -555,13 +576,14 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
             title: newCheckItem.title.trim(),
             category: newCheckItem.category,
             priority: newCheckItem.priority,
+            notes: newCheckItem.notes?.trim() || undefined,
           }
         : item,
     );
 
     setChecklist(updatedChecklist);
     setEditingCheckItem(null);
-    setNewCheckItem({ title: "", category: "DIAGNOSTICO", priority: "MEDIA" });
+    setNewCheckItem({ title: "", category: "DIAGNOSTICO", priority: "MEDIA", notes: "" });
     setIsChecklistModalOpen(false);
   };
 
@@ -587,6 +609,28 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
 
   const handleDeleteCheckItem = (itemId: string) => {
     setChecklist(checklist.filter((item) => item.id !== itemId));
+  };
+
+  // Handler para guardar notas del checklist item
+  const handleSaveCheckItemNotes = async () => {
+    if (!editingCheckItemNotes) return;
+    const updatedChecklist = checklist.map((item) =>
+      item.id === editingCheckItemNotes.id ? { ...item, notes: checkItemNotes.trim() || undefined } : item,
+    );
+    setChecklist(updatedChecklist);
+    // Persistir igual que toggleCheckItem
+    try {
+      await apiClient.patch(
+        endpoints.orders,
+        { id: order.id, checklist: JSON.stringify(updatedChecklist) },
+        { showSuccess: false },
+      );
+    } catch (error) {
+      setChecklistError(formatChecklistError(error));
+    }
+    setIsCheckItemNotesModalOpen(false);
+    setEditingCheckItemNotes(null);
+    setCheckItemNotes("");
   };
 
   // --- Contact handlers ---
@@ -746,111 +790,139 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
 
       {/* Datos del Vehículo */}
       <CustomCard>
-        <div className='mb-4 flex items-center gap-2'>
-          <div className='flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50'>
-            <Car className='h-4 w-4 text-brand-600' />
+        <div className='mb-4 flex items-center justify-between'>
+          <div className='flex items-center gap-2'>
+            <div className='flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50'>
+              <Car className='h-4 w-4 text-brand-600' />
+            </div>
+            <h2 className='text-sm font-bold text-slate-800'>Datos del Vehículo</h2>
           </div>
-          <h2 className='text-sm font-bold text-slate-800'>Datos del Vehículo</h2>
+          <button
+            type='button'
+            onClick={() => setIsVehicleExpanded(!isVehicleExpanded)}
+            className='rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-brand-50 hover:text-brand-600'
+            aria-label={isVehicleExpanded ? "Colapsar vehículo" : "Expandir vehículo"}
+          >
+            {isVehicleExpanded ? <ChevronUp className='h-4 w-4' /> : <ChevronDown className='h-4 w-4' />}
+          </button>
         </div>
-        <div className='pb-4'>
-          <CustomInput
-            label='Placa'
-            value={formData.vehicle_plate}
-            onChange={(e) => handleChange("vehicle_plate", e.target.value)}
-            disabled={!isEditing}
-          />
-        </div>
-        <div className='grid grid-cols-2 gap-4 sm:grid-cols-3'>
-          <CustomInput
-            label='Marca'
-            value={formData.vehicle_make}
-            onChange={(e) => handleChange("vehicle_make", e.target.value)}
-            disabled={!isEditing}
-          />
-          <CustomInput
-            label='Modelo'
-            value={formData.vehicle_model}
-            onChange={(e) => handleChange("vehicle_model", e.target.value)}
-            disabled={!isEditing}
-          />
-          <CustomInput
-            label='Año'
-            type='number'
-            value={formData.vehicle_year}
-            onChange={(e) => handleChange("vehicle_year", e.target.value)}
-            disabled={!isEditing}
-          />
-          <CustomInput
-            label='Color'
-            value={formData.vehicle_color}
-            onChange={(e) => handleChange("vehicle_color", e.target.value)}
-            disabled={!isEditing}
-          />
-          <CustomInput
-            label='Odómetro (km)'
-            type='number'
-            value={formData.mileage}
-            onChange={(e) => handleChange("mileage", e.target.value)}
-            disabled={!isEditing}
-          />
-          <div>
-            <label className='mb-1.5 block text-sm font-semibold text-slate-700'>Combustible</label>
-            <select
-              value={formData.fuel_level}
-              onChange={(e) => handleChange("fuel_level", e.target.value)}
-              className='input-field'
+        {isVehicleExpanded && (
+          <div className='pb-4'>
+            <CustomInput
+              label='Placa'
+              value={formData.vehicle_plate}
+              onChange={(e) => handleChange("vehicle_plate", e.target.value)}
               disabled={!isEditing}
-            >
-              <option value='E'>Vacío (E)</option>
-              <option value='1/4'>1/4</option>
-              <option value='1/2'>1/2</option>
-              <option value='3/4'>3/4</option>
-              <option value='F'>Lleno (F)</option>
-            </select>
+            />
           </div>
-        </div>
-        <div className='pt-4'>
-          <label className='mb-1.5 block text-sm font-semibold text-slate-700'>Detalles del Vehículo</label>
-          <textarea
-            value={formData.vehicle_details || ""}
-            onChange={(e) => handleChange("vehicle_details", e.target.value)}
-            rows={3}
-            className='input-field resize-none'
-            placeholder='Color, accesorios, daños visibles, características especiales...'
-            disabled={!isEditing}
-          />
-        </div>
+        )}
+        {isVehicleExpanded && (
+          <div className='grid grid-cols-2 gap-4 sm:grid-cols-3'>
+            <CustomInput
+              label='Marca'
+              value={formData.vehicle_make}
+              onChange={(e) => handleChange("vehicle_make", e.target.value)}
+              disabled={!isEditing}
+            />
+            <CustomInput
+              label='Modelo'
+              value={formData.vehicle_model}
+              onChange={(e) => handleChange("vehicle_model", e.target.value)}
+              disabled={!isEditing}
+            />
+            <CustomInput
+              label='Año'
+              type='number'
+              value={formData.vehicle_year}
+              onChange={(e) => handleChange("vehicle_year", e.target.value)}
+              disabled={!isEditing}
+            />
+            <CustomInput
+              label='Color'
+              value={formData.vehicle_color}
+              onChange={(e) => handleChange("vehicle_color", e.target.value)}
+              disabled={!isEditing}
+            />
+            <CustomInput
+              label='Odómetro (km)'
+              type='number'
+              value={formData.mileage}
+              onChange={(e) => handleChange("mileage", e.target.value)}
+              disabled={!isEditing}
+            />
+            <div>
+              <label className='mb-1.5 block text-sm font-semibold text-slate-700'>Combustible</label>
+              <select
+                value={formData.fuel_level}
+                onChange={(e) => handleChange("fuel_level", e.target.value)}
+                className='input-field'
+                disabled={!isEditing}
+              >
+                <option value='E'>Vacío (E)</option>
+                <option value='1/4'>1/4</option>
+                <option value='1/2'>1/2</option>
+                <option value='3/4'>3/4</option>
+                <option value='F'>Lleno (F)</option>
+              </select>
+            </div>
+          </div>
+        )}
+        {isVehicleExpanded && (
+          <div className='pt-4'>
+            <label className='mb-1.5 block text-sm font-semibold text-slate-700'>Detalles del Vehículo</label>
+            <textarea
+              value={formData.vehicle_details || ""}
+              onChange={(e) => handleChange("vehicle_details", e.target.value)}
+              rows={3}
+              className='input-field resize-none'
+              placeholder='Color, accesorios, daños visibles, características especiales...'
+              disabled={!isEditing}
+            />
+          </div>
+        )}
       </CustomCard>
 
       {/* Datos del Cliente */}
       <CustomCard>
-        <div className='mb-4 flex items-center gap-2'>
-          <div className='flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50'>
-            <User className='h-4 w-4 text-brand-600' />
+        <div className='mb-4 flex items-center justify-between'>
+          <div className='flex items-center gap-2'>
+            <div className='flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50'>
+              <User className='h-4 w-4 text-brand-600' />
+            </div>
+            <h2 className='text-sm font-bold text-slate-800'>Datos del Cliente</h2>
           </div>
-          <h2 className='text-sm font-bold text-slate-800'>Datos del Cliente</h2>
+          <button
+            type='button'
+            onClick={() => setIsClientExpanded(!isClientExpanded)}
+            className='rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-brand-50 hover:text-brand-600'
+            aria-label={isClientExpanded ? "Colapsar cliente" : "Expandir cliente"}
+          >
+            {isClientExpanded ? <ChevronUp className='h-4 w-4' /> : <ChevronDown className='h-4 w-4' />}
+          </button>
         </div>
-        <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
-          <CustomInput
-            label='Nombre'
-            value={formData.customer_name}
-            onChange={(e) => handleChange("customer_name", e.target.value)}
-            disabled={!isEditing}
-          />
-          <CustomInput
-            label='Teléfono'
-            value={formData.customer_phone}
-            onChange={(e) => handleChange("customer_phone", e.target.value)}
-            disabled={!isEditing}
-          />
-          <CustomInput
-            label='Email'
-            type='email'
-            value={formData.customer_email}
-            onChange={(e) => handleChange("customer_email", e.target.value)}
-            disabled={!isEditing}
-          />
-        </div>
+        {isClientExpanded && (
+          <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
+            <CustomInput
+              label='Nombre'
+              value={formData.customer_name}
+              onChange={(e) => handleChange("customer_name", e.target.value)}
+              disabled={!isEditing}
+            />
+            <CustomInput
+              label='Teléfono'
+              value={formData.customer_phone}
+              onChange={(e) => handleChange("customer_phone", e.target.value)}
+              disabled={!isEditing}
+            />
+            <CustomInput
+              label='Email'
+              type='email'
+              value={formData.customer_email}
+              onChange={(e) => handleChange("customer_email", e.target.value)}
+              disabled={!isEditing}
+            />
+          </div>
+        )}
       </CustomCard>
 
       {/* Datos de la Orden */}
@@ -1070,9 +1142,7 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
                     {/* RF-9 — Origen del repuesto: etiqueta junto al badge de
                         estado solo cuando lo solicitó el técnico; los
                         repuestos del admin/checkin no la muestran. */}
-                    {part.requestedByTechnician && (
-                      <CustomBadge variant='info'>Solicitud del técnico</CustomBadge>
-                    )}
+                    {part.requestedByTechnician && <CustomBadge variant='info'>Solicitud del técnico</CustomBadge>}
                     {canApprove && (
                       <CustomButton
                         type='button'
@@ -1132,7 +1202,7 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
             leftIcon={<Plus className='h-3 w-3' />}
             onClick={() => {
               setEditingCheckItem(null);
-              setNewCheckItem({ title: "", category: "DIAGNOSTICO", priority: "MEDIA" });
+              setNewCheckItem({ title: "", category: "DIAGNOSTICO", priority: "MEDIA", notes: "" });
               setIsChecklistModalOpen(true);
             }}
           >
@@ -1147,7 +1217,7 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
             checklist.map((item) => (
               <div
                 key={item.id}
-                className={`flex items-center gap-3 rounded-xl border p-3.5 ${
+                className={`flex items-start gap-3 rounded-xl border p-3.5 ${
                   item.completed ? "border-emerald-200 bg-emerald-50" : "border-slate-100 bg-white"
                 }`}
               >
@@ -1161,7 +1231,25 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
                 >
                   {item.completed && <CheckCircle2 className='h-4 w-4' />}
                 </button>
-                <div className='flex-1'>
+                <div className='flex-1 min-w-0'>
+                  <div className='flex items-center gap-2 mb-1'>
+                    {/* Prioridad arriba del título */}
+                    {item.priority === "ALTA" && (
+                      <CustomBadge variant='danger' dot>
+                        Alta
+                      </CustomBadge>
+                    )}
+                    {item.priority === "MEDIA" && (
+                      <CustomBadge variant='warning' dot>
+                        Media
+                      </CustomBadge>
+                    )}
+                    {item.priority === "BAJA" && (
+                      <CustomBadge variant='neutral' dot>
+                        Baja
+                      </CustomBadge>
+                    )}
+                  </div>
                   <p
                     className={`text-sm font-bold ${
                       item.completed ? "text-emerald-700 line-through" : "text-slate-800"
@@ -1169,14 +1257,26 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
                   >
                     {item.title}
                   </p>
-                  <div className='mt-1 flex items-center gap-2'>
-                    <span className='text-xs font-medium text-slate-400'>{item.category}</span>
-                    {item.priority === "ALTA" && (
-                      <CustomBadge variant='danger' dot>
-                        Alta
-                      </CustomBadge>
-                    )}
-                  </div>
+                  {/* Notas como expandible debajo del título */}
+                  {item.notes && item.notes.trim() !== "" && (
+                    <div className='my-2 ml-6 text-sm text-slate-600 whitespace-pre-wrap border-l-2 border-slate-200 pl-3'>
+                      {item.notes}
+                    </div>
+                  )}
+                  {/* Botón para editar notas del item del checklist */}
+                  <button
+                    type='button'
+                    onClick={() => {
+                      setEditingCheckItemNotes(item);
+                      setCheckItemNotes(item.notes || "");
+                      setIsCheckItemNotesModalOpen(true);
+                    }}
+                    className='mt-2 flex items-center gap-1.5 text-xs text-slate-500 hover:text-brand-600 transition-colors'
+                    title={item.notes ? "Ver/editar notas" : "Agregar notas"}
+                  >
+                    <MessageSquare className='h-3.5 w-3.5' />
+                    <span>{item.notes ? "Editar Nota" : "Agregar notas"}</span>
+                  </button>
                 </div>
                 <button
                   onClick={() => handleEditCheckItem(item)}
@@ -1410,6 +1510,16 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
               <option value='BAJA'>Baja</option>
             </select>
           </div>
+          <div>
+            <label className='mb-1.5 block text-sm font-semibold text-slate-700'>Notas de ejecución (opcional)</label>
+            <textarea
+              value={newCheckItem.notes}
+              onChange={(e) => setNewCheckItem((prev) => ({ ...prev, notes: e.target.value }))}
+              placeholder='Observaciones, detalles técnicos, hallazgos...'
+              rows={3}
+              className='input-field resize-none'
+            />
+          </div>
           <div className='flex gap-3'>
             <CustomButton
               type='button'
@@ -1474,7 +1584,7 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
       <CustomDialog
         open={commentTarget !== null}
         onClose={closeCommentModal}
-        title={commentTarget === 'delivered' ? 'Confirmar entrega' : 'Confirmar cancelación'}
+        title={commentTarget === "delivered" ? "Confirmar entrega" : "Confirmar cancelación"}
       >
         <div className='space-y-4'>
           <div>
@@ -1485,9 +1595,9 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
               rows={4}
               className='input-field resize-none'
               placeholder={
-                commentTarget === 'delivered'
-                  ? 'Ej: Vehículo retirado por el cliente. Se explicaron las reparaciones realizadas.'
-                  : 'Ej: El cliente canceló el servicio por motivos personales.'
+                commentTarget === "delivered"
+                  ? "Ej: Vehículo retirado por el cliente. Se explicaron las reparaciones realizadas."
+                  : "Ej: El cliente canceló el servicio por motivos personales."
               }
             />
           </div>
@@ -1502,6 +1612,50 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
               isLoading={isCommentSaving}
               disabled={isCommentSaving}
             >
+              Guardar
+            </CustomButton>
+          </div>
+        </div>
+      </CustomDialog>
+
+      {/* Modal de notas de ejecución del checklist item */}
+      <CustomDialog
+        open={isCheckItemNotesModalOpen}
+        onClose={() => {
+          setIsCheckItemNotesModalOpen(false);
+          setEditingCheckItemNotes(null);
+          setCheckItemNotes("");
+        }}
+        title={editingCheckItemNotes ? `Notas: ${editingCheckItemNotes.title}` : "Notas de ejecución"}
+      >
+        <div className='space-y-4'>
+          <div className='text-sm text-slate-500'>
+            <strong>Tarea:</strong> {editingCheckItemNotes?.title}
+          </div>
+          <div>
+            <label className='mb-1.5 block text-sm font-semibold text-slate-700'>Notas de ejecución</label>
+            <textarea
+              value={checkItemNotes}
+              onChange={(e) => setCheckItemNotes(e.target.value)}
+              placeholder='Observaciones, detalles técnicos, hallazgos...'
+              rows={4}
+              className='input-field resize-none'
+            />
+          </div>
+          <div className='flex gap-3'>
+            <CustomButton
+              type='button'
+              variant='secondary'
+              className='flex-1'
+              onClick={() => {
+                setIsCheckItemNotesModalOpen(false);
+                setEditingCheckItemNotes(null);
+                setCheckItemNotes("");
+              }}
+            >
+              Cancelar
+            </CustomButton>
+            <CustomButton className='flex-1' onClick={handleSaveCheckItemNotes}>
               Guardar
             </CustomButton>
           </div>

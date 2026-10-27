@@ -1,9 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   CheckCircle2,
   Circle,
   MessageCircle,
+  MessageSquare,
   Wrench,
   Camera,
   FileText,
@@ -13,6 +14,8 @@ import {
   User,
   ClipboardList,
   Package,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import { CustomCard } from "@/components/ui/CustomCard";
 import { CustomButton } from "@/components/ui/CustomButton";
@@ -64,6 +67,7 @@ interface ChecklistItem {
   category: string;
   priority: string;
   completed: boolean;
+  notes?: string; // Campo opcional para notas de ejecución
 }
 
 interface ServiceItem {
@@ -143,6 +147,15 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [acceptanceState, setAcceptanceState] = useState<AcceptanceState>("idle");
 
+  // Estados para cards expandibles
+  const [isVehicleExpanded, setIsVehicleExpanded] = useState(true);
+  const [isClientExpanded, setIsClientExpanded] = useState(true);
+
+  // Estado para modal de notas del checklist item
+  const [editingCheckItemNotes, setEditingCheckItemNotes] = useState<ChecklistItem | null>(null);
+  const [checkItemNotes, setCheckItemNotes] = useState("");
+  const [isCheckItemNotesModalOpen, setIsCheckItemNotesModalOpen] = useState(false);
+
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["publicOrder", token],
     queryFn: async () => {
@@ -160,9 +173,9 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
   const budget = data?.budget || [];
   const rawEvidence = data?.evidence || [];
   // La evidencia puede venir como strings (URLs) o como objetos con file_url
-  const evidence = rawEvidence.map((e) => (typeof e === "string" ? e : e.file_url));
+  const evidence = rawEvidence.map((e: EvidenceItem) => (typeof e === "string" ? e : e.file_url));
 
-  const checklist = useMemo(() => {
+  const parsedChecklist = useMemo<ChecklistItem[]>(() => {
     if (!order?.checklist) return [];
     if (Array.isArray(order.checklist)) return order.checklist;
     try {
@@ -171,6 +184,13 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
       return [];
     }
   }, [order?.checklist]);
+
+  const [checklist, setChecklist] = useState<ChecklistItem[]>(parsedChecklist);
+
+  // Sync checklist when parsedChecklist changes (e.g., on initial load)
+  useEffect(() => {
+    setChecklist(parsedChecklist);
+  }, [parsedChecklist]);
 
   const serviceItems = useMemo((): ServiceItem[] => {
     if (!order?.service_items) return [];
@@ -376,6 +396,26 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
+  const handleSaveCheckItemNotes = async () => {
+    if (!editingCheckItemNotes) return;
+    const updatedChecklist = checklist.map((item) =>
+      item.id === editingCheckItemNotes.id ? { ...item, notes: checkItemNotes.trim() || undefined } : item,
+    );
+    setChecklist(updatedChecklist);
+    try {
+      await api.patch(
+        endpoints.publicOrder(token),
+        { checklist: JSON.stringify(updatedChecklist) },
+        { skipUpdatedBy: true },
+      );
+    } catch (error) {
+      // El error se muestra globalmente
+    }
+    setIsCheckItemNotesModalOpen(false);
+    setEditingCheckItemNotes(null);
+    setCheckItemNotes("");
+  };
+
   // Estado de carga
   if (isLoading) {
     return (
@@ -428,7 +468,7 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
       </CustomCard>
 
       {/* Progreso del checklist */}
-      {checklist.length > 0 && currentStep > 3 && currentStep < 7 && (
+      {checklist.length > 0 && currentStep >= 1 && (
         <CustomCard>
           <div className='mb-3 flex items-center justify-between'>
             <div className='flex items-center gap-2'>
@@ -450,17 +490,58 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
           </p>
           <ul className='mt-4 space-y-2.5'>
             {checklist.map((item: ChecklistItem) => (
-              <li key={item.id} className='flex items-center gap-2.5'>
+              <li key={item.id} className='flex items-start gap-2.5'>
                 {item.completed ? (
                   <CheckCircle2 className='h-5 w-5 shrink-0 text-emerald-500' />
                 ) : (
                   <Circle className='h-5 w-5 shrink-0 text-slate-300' />
                 )}
-                <span
-                  className={`text-sm ${item.completed ? "text-slate-400 line-through" : "text-slate-700 font-medium"}`}
-                >
-                  {item.title}
-                </span>
+                <div className='flex-1 min-w-0'>
+                  <div className='flex items-center gap-2 mb-1'>
+                    {/* Prioridad arriba del título */}
+                    {item.priority === "ALTA" && (
+                      <CustomBadge variant='danger' dot>
+                        Alta
+                      </CustomBadge>
+                    )}
+                    {item.priority === "MEDIA" && (
+                      <CustomBadge variant='warning' dot>
+                        Media
+                      </CustomBadge>
+                    )}
+                    {item.priority === "BAJA" && (
+                      <CustomBadge variant='neutral' dot>
+                        Baja
+                      </CustomBadge>
+                    )}
+                  </div>
+                  <span
+                    className={`text-sm ${item.completed ? "text-slate-400 line-through" : "text-slate-700 font-medium"}`}
+                  >
+                    {item.title}
+                  </span>
+                  {/* Notas como expandible debajo del título + botón editar */}
+                  {item.notes && item.notes.trim() !== "" && (
+                    <>
+                      <details className='mt-2 group'>
+                        <summary className='flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none'>
+                          <span>Notas de ejecución</span>
+                          <svg
+                            className='h-4 w-4 transition-transform group-open:rotate-180'
+                            fill='none'
+                            stroke='currentColor'
+                            viewBox='0 0 24 24'
+                          >
+                            <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M19 9l-7 7-7-7' />
+                          </svg>
+                        </summary>
+                        <div className='mt-2 ml-6 text-sm text-slate-600 whitespace-pre-wrap border-l-2 border-slate-200 pl-3'>
+                          {item.notes}
+                        </div>
+                      </details>
+                    </>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
@@ -469,66 +550,92 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
 
       {/* Datos del Vehículo */}
       <CustomCard>
-        <div className='mb-4 flex items-center gap-2'>
-          <div className='flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50'>
-            <Car className='h-4 w-4 text-brand-600' />
+        <button
+          type='button'
+          onClick={() => setIsVehicleExpanded(!isVehicleExpanded)}
+          className='w-full mb-4 flex items-center justify-between gap-2'
+        >
+          <div className='flex items-center gap-2'>
+            <div className='flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50'>
+              <Car className='h-4 w-4 text-brand-600' />
+            </div>
+            <h2 className='text-sm font-bold text-slate-800'>Datos del Vehículo</h2>
           </div>
-          <h2 className='text-sm font-bold text-slate-800'>Datos del Vehículo</h2>
-        </div>
-        <div className='grid grid-cols-2 gap-4'>
-          <div>
-            <p className='text-xs font-medium text-slate-400'>Placa</p>
-            <p className='text-sm font-bold text-slate-800'>{order.vehicle_plate}</p>
+          {isVehicleExpanded ? (
+            <ChevronUp className='h-5 w-5 text-slate-400' />
+          ) : (
+            <ChevronDown className='h-5 w-5 text-slate-400' />
+          )}
+        </button>
+        {isVehicleExpanded && (
+          <div className='grid grid-cols-2 gap-4'>
+            <div>
+              <p className='text-xs font-medium text-slate-400'>Placa</p>
+              <p className='text-sm font-bold text-slate-800'>{order.vehicle_plate}</p>
+            </div>
+            <div>
+              <p className='text-xs font-medium text-slate-400'>Marca</p>
+              <p className='text-sm font-bold text-slate-800'>{order.vehicle_make}</p>
+            </div>
+            <div>
+              <p className='text-xs font-medium text-slate-400'>Modelo</p>
+              <p className='text-sm font-bold text-slate-800'>{order.vehicle_model}</p>
+            </div>
+            <div>
+              <p className='text-xs font-medium text-slate-400'>Año</p>
+              <p className='text-sm font-bold text-slate-800'>{order.vehicle_year}</p>
+            </div>
+            <div>
+              <p className='text-xs font-medium text-slate-400'>Color</p>
+              <p className='text-sm font-bold text-slate-800'>{order.vehicle_color || "—"}</p>
+            </div>
+            <div>
+              <p className='text-xs font-medium text-slate-400'>Odómetro</p>
+              <p className='text-sm font-bold text-slate-800'>{order.mileage} km</p>
+            </div>
+            <div>
+              <p className='text-xs font-medium text-slate-400'>Combustible</p>
+              <p className='text-sm font-bold text-slate-800'>{order.fuel_level}</p>
+            </div>
           </div>
-          <div>
-            <p className='text-xs font-medium text-slate-400'>Marca</p>
-            <p className='text-sm font-bold text-slate-800'>{order.vehicle_make}</p>
-          </div>
-          <div>
-            <p className='text-xs font-medium text-slate-400'>Modelo</p>
-            <p className='text-sm font-bold text-slate-800'>{order.vehicle_model}</p>
-          </div>
-          <div>
-            <p className='text-xs font-medium text-slate-400'>Año</p>
-            <p className='text-sm font-bold text-slate-800'>{order.vehicle_year}</p>
-          </div>
-          <div>
-            <p className='text-xs font-medium text-slate-400'>Color</p>
-            <p className='text-sm font-bold text-slate-800'>{order.vehicle_color || "—"}</p>
-          </div>
-          <div>
-            <p className='text-xs font-medium text-slate-400'>Odómetro</p>
-            <p className='text-sm font-bold text-slate-800'>{order.mileage} km</p>
-          </div>
-          <div>
-            <p className='text-xs font-medium text-slate-400'>Combustible</p>
-            <p className='text-sm font-bold text-slate-800'>{order.fuel_level}</p>
-          </div>
-        </div>
+        )}
       </CustomCard>
 
       {/* Datos del Cliente */}
       <CustomCard>
-        <div className='mb-4 flex items-center gap-2'>
-          <div className='flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50'>
-            <User className='h-4 w-4 text-brand-600' />
+        <button
+          type='button'
+          onClick={() => setIsClientExpanded(!isClientExpanded)}
+          className='w-full mb-4 flex items-center justify-between gap-2'
+        >
+          <div className='flex items-center gap-2'>
+            <div className='flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50'>
+              <User className='h-4 w-4 text-brand-600' />
+            </div>
+            <h2 className='text-sm font-bold text-slate-800'>Datos del Cliente</h2>
           </div>
-          <h2 className='text-sm font-bold text-slate-800'>Datos del Cliente</h2>
-        </div>
-        <div className='grid grid-cols-1 gap-4'>
-          <div>
-            <p className='text-xs font-medium text-slate-400'>Nombre</p>
-            <p className='text-sm font-bold text-slate-800'>{order.customer_name}</p>
+          {isClientExpanded ? (
+            <ChevronUp className='h-5 w-5 text-slate-400' />
+          ) : (
+            <ChevronDown className='h-5 w-5 text-slate-400' />
+          )}
+        </button>
+        {isClientExpanded && (
+          <div className='grid grid-cols-1 gap-4'>
+            <div>
+              <p className='text-xs font-medium text-slate-400'>Nombre</p>
+              <p className='text-sm font-bold text-slate-800'>{order.customer_name}</p>
+            </div>
+            <div>
+              <p className='text-xs font-medium text-slate-400'>Teléfono</p>
+              <p className='text-sm font-bold text-slate-800'>{order.customer_phone}</p>
+            </div>
+            <div>
+              <p className='text-xs font-medium text-slate-400'>Email</p>
+              <p className='text-sm font-bold text-slate-800'>{order.customer_email}</p>
+            </div>
           </div>
-          <div>
-            <p className='text-xs font-medium text-slate-400'>Teléfono</p>
-            <p className='text-sm font-bold text-slate-800'>{order.customer_phone}</p>
-          </div>
-          <div>
-            <p className='text-xs font-medium text-slate-400'>Email</p>
-            <p className='text-sm font-bold text-slate-800'>{order.customer_email}</p>
-          </div>
-        </div>
+        )}
       </CustomCard>
 
       {/* Descripción de la falla */}
@@ -649,9 +756,7 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
                     {parts.map((item: OrderPartItem, index: number) => {
                       // Sobre los visibles manda la decisión del cliente (RF-7):
                       // sin decisión aceptada el repuesto queda como pendiente.
-                      const currentDecision = isBudgetAccepted
-                        ? "accepted"
-                        : decisions[String(item.id)] || "pending";
+                      const currentDecision = isBudgetAccepted ? "accepted" : decisions[String(item.id)] || "pending";
                       return (
                         <div
                           key={item.id}

@@ -39,19 +39,19 @@ export function OrderCard({ order, onSelect, dateLabel = 'created', assignedUser
       onClick={() => onSelect(order)}
       className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-soft"
     >
-      {/* Fila superior: placa + estado */}
+      {/* Fila superior: número de orden + estado */}
       <div className="flex items-start justify-between gap-3">
         <span className="font-extrabold tracking-tight text-slate-900">
-          {order.vehicle_plate}
+          Orden #{order.id}
         </span>
         <CustomBadge variant={status.variant} dot>
           {status.label}
         </CustomBadge>
       </div>
 
-      {/* ID + vehículo */}
+      {/* Placa + vehículo */}
       <p className="mt-1 text-xs font-semibold text-slate-400">
-        OT-{order.id.toString().padStart(4, '0')} · {order.vehicle_make} {order.vehicle_model}
+        {order.vehicle_plate} · {order.vehicle_make} {order.vehicle_model}
       </p>
 
       {/* Cliente */}
