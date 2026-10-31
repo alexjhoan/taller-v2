@@ -8,7 +8,7 @@
  * (hoy ya hay 3 copias de getPartStatusBadge y 2 de serializeParts).
  */
 
-/**
+ /**
  * Forma estructural mínima de un repuesto que necesitan los helpers.
  *
  * `PartItem` (useWorkOrders) hoy declara approvalStatus y
@@ -126,6 +126,14 @@ export function countOrdersWithPendingParts(orders: readonly OrderWithParts[]): 
     }
   }
   return count;
+}
+
+/**
+ * Verifica si una orden tiene al menos un repuesto en estado "pending".
+ */
+export function hasPendingParts(order: OrderWithParts): boolean {
+  const parts = parseParts(order.parts);
+  return parts.some((part) => part.approvalStatus === "pending");
 }
 
 /**

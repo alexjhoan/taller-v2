@@ -66,14 +66,9 @@ function AdminDashboardPage() {
   // Restaurar selección desde URL (cuando se vuelve de order-log o navegación atrás)
   useEffect(() => {
     const { selectedOrderId, selectedUserId } = router.query;
-    console.log(selectedOrderId);
-    console.log(workOrders);
     if (selectedOrderId && workOrders) {
-      console.log("pasa");
       const order = workOrders.find((o) => o.id == Number(selectedOrderId));
-      console.log(order);
       if (order) {
-        console.log(order);
         setSelectedOrder(order);
         setSelectedUser(null);
       }

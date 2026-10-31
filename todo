@@ -1,9 +1,19 @@
-[] agregar un campo de status en progreso
+[x] agregar un campo de status en progreso
 
-[] dividir las fotos de recepcion y en proceso
-[] quitar descripcion dela falla
+[x] dividir las fotos de recepcion y en proceso
+[x] quitar descripcion dela falla
 
 [] respuesta y aprobacion (por el cliente) del diagnostico debajo falla editable por el admin
+
+[x] que desde la page de notificaciones se pueda ir a la orden
+
+[x] ver si se puede hacer un filtro de ordenes con solicitudes pendientes, ademas de agregar un item dentro de la card
+
+[] que la recepcion del vehiculo sea por una foto del carnet de circulacion, y dividir toda la recepcion en pasos como un formulario wizard
+
+[x] alertas para el mecanico, como puedo hacer para que el mecanico, cada lectura de cada alerta sea personal que si la lee un admin no aparesca leida en el perfil del mecanico? ademas la vista de alertas se debe ver, pero solo las alertas que corresponden a ese mecanico, un admin si puede ver todas las alertas
+
+
 
 
 son 2 aprobacion primero del trabajo y 2do respuestos

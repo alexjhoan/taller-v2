@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { FileText, Search, RefreshCw, Loader2, AlertCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { FileText, Search, RefreshCw, Loader2, AlertCircle, Filter } from 'lucide-react';
 import { CustomCard } from '@/components/ui/CustomCard';
 import { CustomInput } from '@/components/ui/CustomInput';
 import { CustomButton } from '@/components/ui/CustomButton';
@@ -8,7 +8,7 @@ import { useUsersMap, User as UserType } from '@/hooks/useUsers';
 import { WorkOrder } from '@/hooks/useWorkOrders';
 import { OrderCard } from '@/components/OrderCard';
 import { toNumericIdArray } from '@/utils/ids';
-import { countOrdersWithPendingParts } from '@/utils/parts';
+import { countOrdersWithPendingParts, hasPendingParts } from '@/utils/parts';
 import {
   ORDER_STATUS_OPTIONS,
   ALL_STATUSES_VALUE,
@@ -64,8 +64,30 @@ export function WorkOrderList({
     readStatusFilter(typeof window !== 'undefined' ? window.localStorage : null)
   );
 
+  // Filtro de solicitudes pendientes - guarda el filtro anterior para restaurar
+  const [pendingFilter, setPendingFilter] = useState<boolean>(false);
+  const [previousStatusFilter, setPreviousStatusFilter] = useState<string>(statusFilter);
+
+  // Toggle del filtro de pendientes
+  const handlePendingFilterToggle = () => {
+    if (!pendingFilter) {
+      // Guardar filtro actual antes de activar filtro pendiente
+      setPreviousStatusFilter(statusFilter);
+      setPendingFilter(true);
+    } else {
+      // Restaurar filtro anterior
+      setStatusFilter(previousStatusFilter);
+      persistStatusFilter(typeof window !== 'undefined' ? window.localStorage : null, previousStatusFilter);
+      setPendingFilter(false);
+    }
+  };
+
   // Cambiar filtro: persiste en localStorage y filtra la lista
   const handleStatusFilterChange = (value: string) => {
+    // Si estamos en filtro pendiente y cambiamos manualmente el estado, salimos del filtro pendiente
+    if (pendingFilter && value !== previousStatusFilter) {
+      setPendingFilter(false);
+    }
     setStatusFilter(value);
     persistStatusFilter(typeof window !== 'undefined' ? window.localStorage : null, value);
   };
@@ -81,6 +103,11 @@ export function WorkOrderList({
       )
     : statusFiltered;
 
+  // Filtro adicional: solo órdenes con repuestos pendientes
+  const filteredOrders = pendingFilter
+    ? visibleOrders.filter((o) => hasPendingParts(o))
+    : visibleOrders;
+
   // RF-8 — Órdenes (de las ya cargadas por props) con al menos un
   // repuesto en "pending"; se recalcula solo al refrescar la lista.
   // Si el padre no lo pidió (vista del técnico) no se calcula ni se pinta.
@@ -94,22 +121,36 @@ export function WorkOrderList({
         <div className='flex flex-wrap items-center gap-2'>
           <h3 className='text-sm font-bold text-slate-800'>{title}</h3>
           {/* RF-8 — Aviso al admin de solicitudes de repuesto pendientes.
-              Con 0 no se muestra nada: no hay nada que actuar. */}
+              Con 0 no se muestra nada: no hay nada que actuar.
+              Click para alternar filtro de pendientes. */}
           {showPendingPartsCounter && pendingPartsCount > 0 && (
-            <CustomBadge variant='warning' dot>
-              {pendingPartsCount === 1
-                ? '1 solicitud de repuesto pendiente'
-                : `${pendingPartsCount} solicitudes de repuesto pendientes`}
-            </CustomBadge>
+            <CustomButton
+              type='button'
+              variant={pendingFilter ? 'primary' : 'secondary'}
+              size='sm'
+              leftIcon={<Filter className='h-3.5 w-3.5' />}
+              onClick={handlePendingFilterToggle}
+              className='whitespace-nowrap gap-1.5'
+              title={pendingFilter
+                ? `Quitar filtro y volver a "${ORDER_STATUS_OPTIONS.find(o => o.value === previousStatusFilter)?.label || 'Todos'}"`
+                : `${pendingPartsCount === 1 ? '1 solicitud' : `${pendingPartsCount} solicitudes`} de repuesto pendiente${pendingPartsCount > 1 ? 's' : ''}`}
+            >
+              <span className="flex items-center gap-1">
+                <span className="hidden sm:inline">{pendingPartsCount === 1 ? '1 solicitud' : `${pendingPartsCount} solicitudes`}</span>
+                <span className="hidden sm:inline">de repuesto</span>
+                <span className="hidden sm:inline">pendiente{pendingPartsCount > 1 ? 's' : ''}</span>
+              </span>
+            </CustomButton>
           )}
         </div>
         <div className='flex items-center gap-2'>
           <select
             id='work-orders-status-filter'
             aria-label='Filtrar por estado'
-            value={statusFilter}
+            value={pendingFilter ? previousStatusFilter : statusFilter}
             onChange={(e) => handleStatusFilterChange(e.target.value)}
             className='input-field w-auto py-2'
+            disabled={pendingFilter}
           >
             {ORDER_STATUS_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -154,9 +195,9 @@ export function WorkOrderList({
           <AlertCircle className='h-6 w-6' />
           <span className='ml-2 text-sm'>Error al cargar órdenes</span>
         </div>
-      ) : visibleOrders.length > 0 ? (
+      ) : filteredOrders.length > 0 ? (
         <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3'>
-          {visibleOrders.map((order) => (
+          {filteredOrders.map((order) => (
             <OrderCard
               key={order.id}
               order={order}
@@ -174,9 +215,11 @@ export function WorkOrderList({
           <p className='mt-3 text-sm font-medium text-slate-400'>
             {query
               ? 'No se encontraron órdenes'
-              : statusFilter !== ALL_STATUSES_VALUE && orders.length > 0
-                ? 'No hay órdenes con este estado'
-                : 'No hay órdenes de trabajo'}
+              : pendingFilter
+                ? 'No hay órdenes con solicitudes pendientes'
+                : statusFilter !== ALL_STATUSES_VALUE && orders.length > 0
+                  ? 'No hay órdenes con este estado'
+                  : 'No hay órdenes de trabajo'}
           </p>
         </div>
       )}

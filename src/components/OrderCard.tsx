@@ -1,7 +1,8 @@
-import { Calendar, User, UserCheck } from 'lucide-react';
+import { Calendar, User, UserCheck, AlertCircle } from 'lucide-react';
 import { CustomBadge } from '@/components/ui/CustomBadge';
 import { WorkOrder } from '@/hooks/useWorkOrders';
 import { User as UserType } from '@/hooks/useUsers';
+import { hasPendingParts } from '@/utils/parts';
 
 interface OrderCardProps {
   order: WorkOrder;
@@ -30,6 +31,7 @@ const assignedStyles: Record<string, string> = {
 
 export function OrderCard({ order, onSelect, dateLabel = 'created', assignedUsers }: OrderCardProps) {
   const status = statusMap[order.status] || { label: order.status, variant: 'neutral' as const };
+  const hasPending = hasPendingParts(order);
 
   const dateValue = dateLabel === 'finished' ? order.finished_at : order.created_at;
 
@@ -39,14 +41,22 @@ export function OrderCard({ order, onSelect, dateLabel = 'created', assignedUser
       onClick={() => onSelect(order)}
       className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-soft"
     >
-      {/* Fila superior: número de orden + estado */}
+      {/* Fila superior: número de orden + estado + solicitudes pendientes */}
       <div className="flex items-start justify-between gap-3">
         <span className="font-extrabold tracking-tight text-slate-900">
           Orden #{order.id}
         </span>
-        <CustomBadge variant={status.variant} dot>
-          {status.label}
-        </CustomBadge>
+        <div className="flex items-center gap-1.5">
+          <CustomBadge variant={status.variant} dot>
+            {status.label}
+          </CustomBadge>
+          {hasPending && (
+            <CustomBadge variant="warning" className="whitespace-nowrap">
+              <AlertCircle className="h-2.5 w-2.5" />
+              Por aprobación
+            </CustomBadge>
+          )}
+        </div>
       </div>
 
       {/* Placa + vehículo */}

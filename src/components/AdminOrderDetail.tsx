@@ -1311,7 +1311,7 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
         </CustomCard>
       )}
 
-      <EvidenceUploader orderId={order.id} />
+      <EvidenceUploader orderId={order.id} allowedTypes={['work_progress', 'final']} />
 
       {/* Comentario de entrega/cancelación (solo si la orden ya lo tiene) */}
       {withdrawalComment && withdrawalComment.trim() !== "" && (

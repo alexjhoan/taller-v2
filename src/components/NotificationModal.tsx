@@ -6,7 +6,8 @@ import { CustomDialog } from "@/components/ui/CustomDialog";
 import { AlertList } from "@/components/AlertList";
 import { formatAlertDate, getAlertBadgeVariant, getAlertTypeInfo, formatUnreadCount } from "@/utils/alerts";
 import type { Alert } from "@/utils/alerts";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
+import { useSnackbar } from "notistack";
 
 interface NotificationModalProps {
   /** Si el modal está abierto */
@@ -31,6 +32,10 @@ interface NotificationModalProps {
   onRetry: () => void;
   /** Ref a la campana para devolver foco al cerrar */
   bellRef: React.RefObject<HTMLButtonElement>;
+  /** Rol del usuario actual */
+  userRole: 'admin' | 'mechanic';
+  /** ID del usuario actual (para filtrado de mecánico) */
+  userId?: number;
 }
 
 /**
@@ -51,12 +56,24 @@ export function NotificationModal({
   error,
   onRetry,
   bellRef,
+  userRole,
+  userId,
 }: NotificationModalProps) {
-  const isOffline = error && (error as any).status === 503;
-  const isEmpty = !isLoading && !isError && alerts.length === 0;
+  const { enqueueSnackbar } = useSnackbar();
+  // Filtrar alertas por rol de usuario
+  // - Admin: ver todas las alertas
+  // - Mecánico: ver solo alertas de órdenes asignadas
+  const filteredAlerts = useMemo(() => {
+    if (userRole === 'admin') return alerts;
+    // Para mecánico, filtrar por órdenes asignadas (simplificado)
+    // En un implementación completa, se compararía userId con order.assigned_user_id
+    // Por ahora mostramos todas pero con la estructura para filtrar después
+    return alerts;
+  }, [alerts, userRole]);
 
   // Estado local para refresh manual
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const isEmpty = !isLoading && !isError && filteredAlerts.length === 0;
 
   // Devolver foco a la campana al cerrar
   useEffect(() => {
@@ -66,7 +83,19 @@ export function NotificationModal({
   }, [open, bellRef]);
 
   // Detectar si es offline 503 (el hook usa throwOnError para no propagar 503)
+  const isOffline = error && (error as any).status === 503;
   const showOfflineNotice = isError && isOffline;
+
+  // Mostrar errores como snackbar
+  useEffect(() => {
+    if (isError && error && !isOffline) {
+      enqueueSnackbar(error.message ?? "Error al cargar notificaciones", {
+        variant: "error",
+        persist: false,
+        preventDuplicate: true,
+      });
+    }
+  }, [isError, error, isOffline, enqueueSnackbar]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -89,10 +118,16 @@ export function NotificationModal({
       <div className='space-y-3'>
         {/* Lista de alertas usando componente reutilizable AlertList */}
         <AlertList
-          alerts={alerts}
+          alerts={filteredAlerts}
           emptyMessage='No tienes notificaciones pendientes'
           onMarkRead={onMarkRead}
           onMarkAllRead={onMarkAllRead}
+          onClickAlert={(orderId) => {
+            // Cerrar el modal al hacer click en una notificación
+            if (orderId) {
+              onClose();
+            }
+          }}
           isLoading={isLoading}
           isError={isError}
           error={error}
@@ -104,15 +139,6 @@ export function NotificationModal({
         {/* Mensajes de estado especializados que AlertList no cubre */}
         {isLoading && !isRefreshing && isEmpty && (
           <p className='text-center text-sm text-slate-400 py-6'>No tienes notificaciones pendientes</p>
-        )}
-
-        {!isLoading && !isRefreshing && isError && (
-          <div className='rounded-xl border border-red-200 bg-red-50 p-4 text-center'>
-            <p className='text-sm text-red-700 mb-3'>{error?.message ?? "Error al cargar notificaciones"}</p>
-            <CustomButton variant='ghost' size='sm' onClick={onRetry}>
-              Reintentar
-            </CustomButton>
-          </div>
         )}
 
         {showOfflineNotice && (

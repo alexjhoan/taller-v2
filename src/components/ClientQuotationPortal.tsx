@@ -23,7 +23,7 @@ import { CustomBadge } from "@/components/ui/CustomBadge";
 import { CustomSwitch } from "@/components/ui/CustomSwitch";
 import { StatusSlider } from "@/components/StatusSlider";
 import { CustomDialog } from "@/components/ui/CustomDialog";
-import { EvidenceGallery } from "@/components/EvidenceGallery";
+import { EvidenceGallery, EvidenceItem } from "@/components/EvidenceGallery";
 import { useWhatsApp } from "@/hooks/useWhatsApp";
 import { formatCOP } from "@/utils/currency";
 import { isPartVisibleInPortal } from "@/utils/parts";
@@ -51,15 +51,6 @@ interface BudgetItem {
   unit_price: string;
   customer_decision: CustomerDecision;
 }
-
-interface Evidence {
-  id: number;
-  type: string;
-  file_url: string;
-  created_at: string;
-}
-
-type EvidenceItem = string | Evidence;
 
 interface ChecklistItem {
   id: string;
@@ -114,7 +105,7 @@ interface OrderData {
 
 interface PublicOrderResponse {
   order: OrderData;
-  evidence: EvidenceItem[];
+  evidence: Array<{ url: string; evidence_type: string; created_at: string }>;
   budget: BudgetItem[];
 }
 
@@ -172,8 +163,14 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
   const order = data?.order;
   const budget = data?.budget || [];
   const rawEvidence = data?.evidence || [];
-  // La evidencia puede venir como strings (URLs) o como objetos con file_url
-  const evidence = rawEvidence.map((e: EvidenceItem) => (typeof e === "string" ? e : e.file_url));
+  // La evidencia viene como objetos del backend: { id, url, evidence_type, type, created_at }
+  // Mapear al formato EvidenceItem que espera EvidenceGallery
+  // Manejo de evidencia_type undefined: fallback a 'reception' para que el portal vea todo
+  const evidence = rawEvidence.map((e: { url: string; evidence_type: string | undefined; created_at: string }) => ({
+    url: e.url,
+    evidence_type: (e.evidence_type || 'reception') as 'reception' | 'work_progress' | 'final',
+    created_at: e.created_at,
+  }));
 
   const parsedChecklist = useMemo<ChecklistItem[]>(() => {
     if (!order?.checklist) return [];
@@ -453,7 +450,7 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
   const isBudgetEditable = order.budget_accepted === 0;
 
   return (
-    <div className='mx-auto max-w-md space-y-6 px-4 pb-32 sm:px-6'>
+    <div className='mx-auto max-w-7xl space-y-6 px-4 pb-32 sm:px-6'>
       {/* Header */}
       <div>
         <h1 className='text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900'>Estado de tu Vehículo</h1>
@@ -865,7 +862,7 @@ export function ClientQuotationPortal({ token }: ClientQuotationPortalProps) {
 
       {/* --- Sticky Footer --- */}
       <div className='fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur-sm'>
-        <div className='mx-auto max-w-md p-4'>
+        <div className='mx-auto max-w-md sm:max-w-lg lg:max-w-xl xl:max-w-2xl p-4'>
           {isBudgetEditable ? (
             <>
               <div className='mb-3 flex items-center justify-between'>

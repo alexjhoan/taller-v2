@@ -729,7 +729,7 @@ export function TechnicianOrderDetail({ order, onBack }: TechnicianOrderDetailPr
         </CustomCard>
       )}
 
-      <EvidenceUploader orderId={order.id} />
+      <EvidenceUploader orderId={order.id} allowedTypes={['work_progress']} />
 
       {/* Ver historial de cambios (solo admin; el mecánico no lo ve) */}
       {user?.role === "admin" && (

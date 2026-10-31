@@ -1,5 +1,5 @@
-import { useRef, useState, useCallback, useEffect } from 'react';
-import { X, Upload, Loader2, CheckCircle2, AlertCircle, FileText, Image, Video, Camera, Images, RotateCcw, Trash2, Play } from 'lucide-react';
+﻿import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import { X, Upload, Loader2, CheckCircle2, AlertCircle, FileText, Image, Video, Camera, Images, RotateCcw, Trash2, Play, MessageSquare } from 'lucide-react';
 import { useEvidenceUpload, EVIDENCE_ACCEPT } from '@/hooks/useEvidenceUpload';
 import { CustomButton } from '@/components/ui/CustomButton';
 import { CustomCard } from '@/components/ui/CustomCard';
@@ -12,6 +12,27 @@ const FILE_ICONS: Record<string, typeof FileText> = {
   'image/webp': Image,
   'video/mp4': Video,
   'video/quicktime': Video,
+};
+
+// Tipos de evidencia
+export type EvidenceType = 'reception' | 'work_progress' | 'final';
+
+const EVIDENCE_TYPE_LABELS: Record<EvidenceType, string> = {
+  reception: 'Recepción',
+  work_progress: 'Progreso de trabajo',
+  final: 'Entrega final',
+};
+
+const EVIDENCE_TYPE_ICONS: Record<EvidenceType, typeof MessageSquare> = {
+  reception: MessageSquare,
+  work_progress: MessageSquare,
+  final: MessageSquare,
+};
+
+const EVIDENCE_TYPE_DESCRIPTIONS: Record<EvidenceType, string> = {
+  reception: 'Fotos/videos al recibir el vehículo',
+  work_progress: 'Fotos/videos durante la reparación',
+  final: 'Fotos finales al entregar el vehículo',
 };
 
 // Hook para gestionar object URLs de archivos (miniaturas)
@@ -39,9 +60,11 @@ interface EvidenceUploaderProps {
   onUploadComplete?: (urls: string[]) => void;
   onFilesSelected?: (files: File[]) => void;
   selectionOnly?: boolean;
+  /** Tipos de evidencia permitidos. Default: todos los tipos. */
+  allowedTypes?: EvidenceType[];
 }
 
-export function EvidenceUploader({ orderId, onUploadComplete, onFilesSelected, selectionOnly = false }: EvidenceUploaderProps) {
+export function EvidenceUploader({ orderId, onUploadComplete, onFilesSelected, selectionOnly = false, allowedTypes = ['reception', 'work_progress', 'final'] }: EvidenceUploaderProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   // Input de la zona de drop / botón "Seleccionar de galería" (sin capture)
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -53,6 +76,9 @@ export function EvidenceUploader({ orderId, onUploadComplete, onFilesSelected, s
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
+  // Evidence type state
+  const [evidenceType, setEvidenceType] = useState<EvidenceType>(allowedTypes[0] || 'work_progress');
+
   const {
     files,
     isUploading,
@@ -62,7 +88,7 @@ export function EvidenceUploader({ orderId, onUploadComplete, onFilesSelected, s
     clearCompleted,
     retryFile,
     uploadSequentially,
-  } = useEvidenceUpload({ orderId, onAllCompleted: onUploadComplete });
+  } = useEvidenceUpload({ orderId, onAllCompleted: onUploadComplete, evidenceType });
 
   // Miniaturas con object URLs
   const objectUrls = useObjectUrls(files);
@@ -306,6 +332,31 @@ export function EvidenceUploader({ orderId, onUploadComplete, onFilesSelected, s
             </span>
             <span className="sm:hidden">Agrega evidencia desde la cámara o la galería</span>
           </p>
+          {/* Selector de tipo de evidencia (solo si hay más de 1 tipo permitido) */}
+          {allowedTypes.length > 1 && (
+            <div className="mt-3 mb-2">
+              <label className="block text-xs font-medium text-slate-600 mb-1">
+                Tipo de evidencia
+              </label>
+              <select
+                value={evidenceType}
+                onChange={(e) => setEvidenceType(e.target.value as EvidenceType)}
+                className="input-field w-full sm:w-auto"
+              >
+                {allowedTypes.map((type) => (
+                  <option key={type} value={type}>
+                    {type === 'reception' && '📥 Recepción — Fotos al recibir el vehículo'}
+                    {type === 'work_progress' && '🔧 Progreso de trabajo — Fotos durante la reparación'}
+                    {type === 'final' && '✅ Entrega final — Fotos al entregar'}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-slate-500">
+                {EVIDENCE_TYPE_DESCRIPTIONS[evidenceType]}
+              </p>
+            </div>
+          )}
+
           <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-center">
             <CustomButton
               type="button"

@@ -346,6 +346,7 @@ export function ReceptionCheckinForm() {
             for (const file of pendingFiles) {
               const formData = new FormData();
               formData.append("file", file);
+              formData.append("evidence_type", "reception");
               const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "";
               const { getApiToken } = await import("@/services/api");
               const token = getApiToken() || "";
@@ -586,7 +587,7 @@ export function ReceptionCheckinForm() {
                 type='tel'
                 value={formData.customer_phone}
                 onChange={(e) => setFormData((prev) => ({ ...prev, customer_phone: e.target.value }))}
-                placeholder='+58 412 123 4567'
+                placeholder='0412 123 4567'
               />
               <CustomInput
                 label='Email'
@@ -731,7 +732,7 @@ export function ReceptionCheckinForm() {
           )}
 
           {/* Descripción textual */}
-          <div className='mt-4'>
+          {/* <div className='mt-4'>
             <CustomInput
               label='Descripción de la falla'
               name='failure_description'
@@ -739,7 +740,7 @@ export function ReceptionCheckinForm() {
               onChange={(e) => setFormData((prev) => ({ ...prev, failure_description: e.target.value }))}
               placeholder='El vehículo vibra al frenar...'
             />
-          </div>
+          </div> */}
         </CustomCard>
 
         {/* --- Servicios (Mano de obra) --- */}
@@ -932,6 +933,7 @@ export function ReceptionCheckinForm() {
         <EvidenceUploader
           orderId={0}
           selectionOnly
+          allowedTypes={["reception"]}
           onFilesSelected={(files) => setPendingFiles((prev) => [...prev, ...files])}
         />
 

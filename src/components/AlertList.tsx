@@ -12,6 +12,8 @@ interface AlertListProps {
   emptyMessage: string;
   /** Callback al marcar una alerta como leída (solo si showActions=true) */
   onMarkRead?: (id: string, orderId: string | null) => void;
+  /** Callback al hacer click en una alerta para navegar a la orden */
+  onClickAlert?: (orderId: string | null) => void;
   /** Callback al marcar todas como leídas (solo si showActions=true) */
   onMarkAllRead?: () => void;
   /** Estado de carga inicial */
@@ -37,6 +39,7 @@ export function AlertList({
   alerts,
   emptyMessage,
   onMarkRead,
+  onClickAlert,
   onMarkAllRead,
   isLoading,
   isError,
@@ -140,13 +143,22 @@ export function AlertList({
               type="button"
               role={showActions ? 'menuitem' : 'button'}
               tabIndex={0}
-              onClick={showActions && onMarkRead ? () => onMarkRead(alert.id, alert.order_id) : undefined}
-              className={`w-full text-left rounded-xl border border-slate-200 p-3 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 ${
+              onClick={() => {
+                // Navegar a la orden si tiene order_id
+                if (alert.order_id && onClickAlert) {
+                  onClickAlert(alert.order_id);
+                }
+                // Marcar como leída solo en tab "no leídas" (showActions=true)
+                if (showActions && onMarkRead) {
+                  onMarkRead(alert.id, alert.order_id);
+                }
+              }}
+              className={`w-full text-left rounded-xl border border-slate-200 p-3 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer ${
                 showActions
                   ? 'bg-white hover:bg-slate-50'
-                  : 'bg-slate-50'
+                  : 'bg-slate-50 hover:bg-slate-100'
               }`}
-              disabled={!showActions}
+              disabled={!showActions && !onClickAlert}
             >
               <div className="flex items-start gap-2.5">
                 <CustomBadge

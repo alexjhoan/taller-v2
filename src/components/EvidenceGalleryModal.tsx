@@ -4,23 +4,32 @@ import { CustomButton } from "@/components/ui/CustomButton";
 import { CustomImage } from "@/components/ui/CustomImage";
 import { CustomDialog } from "@/components/ui/CustomDialog";
 
+export type EvidenceType = 'reception' | 'work_progress' | 'final';
+
+interface EvidenceItem {
+  url: string;
+  evidence_type: EvidenceType;
+  created_at?: string;
+}
+
 interface EvidenceGalleryModalProps {
   isOpen: boolean;
   onClose: () => void;
-  evidence: string[];
+  evidence: EvidenceItem[];
   initialIndex?: number;
 }
+
+const isVideo = (url: string) => {
+  return /\.(mp4|mov|webm)($|\?)/i.test(url);
+};
 
 export function EvidenceGalleryModal({ isOpen, onClose, evidence, initialIndex = 0 }: EvidenceGalleryModalProps) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
 
-  const isVideo = (url: string) => {
-    return /\.(mp4|mov|webm)($|\?)/i.test(url);
-  };
-
-  const currentUrl = evidence[currentIndex];
-  const currentIsVideo = isVideo(currentUrl);
+  const currentEvidence = evidence[currentIndex];
+  const currentUrl = currentEvidence?.url;
+  const currentIsVideo = currentUrl ? isVideo(currentUrl) : false;
 
   // Reset index when modal opens
   useEffect(() => {
@@ -148,10 +157,16 @@ export function EvidenceGalleryModal({ isOpen, onClose, evidence, initialIndex =
         {/* Info Bar at Bottom */}
         <div className='mt-4 flex items-center justify-between text-white'>
           <div>
-            <p className='text-sm font-medium'>{currentUrl.split("/").pop() || `Evidencia ${currentIndex + 1}`}</p>
-            <p className='text-xs text-white/60'>
+            <p className='text-sm font-medium'>{currentEvidence?.url?.split("/").pop() || `Evidencia ${currentIndex + 1}`}</p>
+            <p className='mt-1 text-xs text-white/60 flex items-center gap-2'>
               {currentIndex + 1} de {evidence.length}
-              {currentIsVideo && " · Video"}
+              {currentEvidence?.evidence_type && (
+                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/20 text-xs">
+                  {currentEvidence.evidence_type === 'reception' && '📥 Recepción'}
+                  {currentEvidence.evidence_type === 'work_progress' && '🔧 Progreso'}
+                  {currentEvidence.evidence_type === 'final' && '✅ Entrega final'}
+                </span>
+              )}
             </p>
           </div>
           <div className='flex items-center gap-2'>
@@ -173,11 +188,11 @@ export function EvidenceGalleryModal({ isOpen, onClose, evidence, initialIndex =
           <div className='mx-auto max-w-5xl'>
             <p className='mb-2 text-xs font-medium text-white/70 text-center'>Miniaturas - Click para navegar</p>
             <div className='flex gap-2 overflow-x-auto pb-2 scrollbar-hide'>
-              {evidence.map((url, index) => {
-                const isVid = isVideo(url);
+              {evidence.map((item, index) => {
+                const isVid = isVideo(item.url);
                 return (
                   <button
-                    key={url}
+                    key={item.url}
                     onClick={() => handleThumbnailClick(index)}
                     className={`relative flex-shrink-0 h-16 w-24 rounded-lg overflow-hidden border-2 transition-all ${
                       index === currentIndex
@@ -189,13 +204,32 @@ export function EvidenceGalleryModal({ isOpen, onClose, evidence, initialIndex =
                   >
                     {isVid ? (
                       <>
-                        <video src={url} className='w-full h-full object-cover' muted playsInline />
+                        <video src={item.url} className='w-full h-full object-cover' muted playsInline />
                         <div className='absolute inset-0 flex items-center justify-center bg-black/50'>
                           <Play className='h-5 w-5 text-white' />
                         </div>
+                        <div className='absolute bottom-1 left-1 right-1 flex items-center justify-center gap-1 px-1'>
+                          <span className='inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded bg-black/60 text-white'>
+                            🔧 <span className='hidden xs:inline'>Video</span>
+                          </span>
+                        </div>
                       </>
                     ) : (
-                      <CustomImage src={url} alt={`Miniatura ${index + 1}`} className='w-full h-full object-cover' />
+                      <>
+                        <CustomImage src={item.url} alt={`Miniatura ${index + 1}`} className='w-full h-full object-cover' />
+                        <div className='absolute bottom-1 left-1 right-1 flex items-center justify-center gap-1 px-1'>
+                          <span className='inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded bg-black/60 text-white'>
+                            {item.evidence_type === 'reception' && '📥'}
+                            {item.evidence_type === 'work_progress' && '🔧'}
+                            {item.evidence_type === 'final' && '✅'}
+                            <span className='capitalize hidden xs:inline'>
+                              {item.evidence_type === 'reception' && 'Recepción'}
+                              {item.evidence_type === 'work_progress' && 'Progreso'}
+                              {item.evidence_type === 'final' && 'Entrega final'}
+                            </span>
+                          </span>
+                        </div>
+                      </>
                     )}
                     {index === currentIndex && <div className='absolute inset-0 bg-brand-500/30' />}
                   </button>

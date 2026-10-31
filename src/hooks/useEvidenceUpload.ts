@@ -3,6 +3,8 @@ import { api, endpoints, ApiError, getApiToken } from '@/services/api';
 import { useSnackbar } from 'notistack';
 import { generateShortUid } from '@/utils/uid';
 
+export type EvidenceType = 'reception' | 'work_progress' | 'final';
+
 export const EVIDENCE_ALLOWED_TYPES = [
   'image/jpeg',
   'image/png',
@@ -25,9 +27,10 @@ interface UploadFile {
 interface UseEvidenceUploadOptions {
   orderId: number;
   onAllCompleted?: (urls: string[]) => void;
+  evidenceType?: EvidenceType;
 }
 
-export function useEvidenceUpload({ orderId, onAllCompleted }: UseEvidenceUploadOptions) {
+export function useEvidenceUpload({ orderId, onAllCompleted, evidenceType = 'work_progress' }: UseEvidenceUploadOptions) {
   const { enqueueSnackbar } = useSnackbar();
   const [files, setFiles] = useState<UploadFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -57,6 +60,7 @@ export function useEvidenceUpload({ orderId, onAllCompleted }: UseEvidenceUpload
 
       const formData = new FormData();
       formData.append('file', file.file);
+      formData.append('evidence_type', evidenceType);
 
       try {
         const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || ''}${endpoints.evidence(orderId)}`, {
@@ -94,7 +98,7 @@ export function useEvidenceUpload({ orderId, onAllCompleted }: UseEvidenceUpload
         return { ...file, status: 'error', error: String(error) };
       }
     },
-    [orderId]
+    [orderId, evidenceType]
   );
 
   const uploadSequentially = useCallback(async () => {
@@ -114,6 +118,7 @@ export function useEvidenceUpload({ orderId, onAllCompleted }: UseEvidenceUpload
       try {
         const formData = new FormData();
         formData.append('file', file.file);
+        formData.append('evidence_type', evidenceType);
 
         // Use XMLHttpRequest for real progress
         const uploadedFile = await new Promise<UploadFile>((resolve, reject) => {
@@ -191,7 +196,7 @@ export function useEvidenceUpload({ orderId, onAllCompleted }: UseEvidenceUpload
 
     setIsUploading(false);
     setOverallProgress(0);
-  }, [orderId, onAllCompleted]);
+  }, [orderId, evidenceType, onAllCompleted]);
 
   const addFiles = useCallback((newFiles: FileList | File[]) => {
     const fileArray = Array.from(newFiles);

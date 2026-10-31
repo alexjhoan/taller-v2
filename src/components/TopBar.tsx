@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { Bell, Clock, Menu, ExternalLink } from 'lucide-react';
 import { useRouter } from 'next/router';
 import { useUserContext } from '@/context/UserContext';
 import { CustomBadge } from '@/components/ui/CustomBadge';
 import { CustomButton } from '@/components/ui/CustomButton';
-import { useUnreadAlerts, useMarkAlertAsRead, useMarkAllAlertsAsRead } from '@/hooks/useAlerts';
+import { useUnreadAlerts, useMarkAlertAsRead, useMarkAllAlertsAsRead, useMechanicUnreadAlerts } from '@/hooks/useAlerts';
 import { NotificationModal } from '@/components/NotificationModal';
 import { formatUnreadCount } from '@/utils/alerts';
 
@@ -49,23 +49,42 @@ export function TopBar({ onOpenMenu, isMenuOpen }: TopBarProps) {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
-  // Campana de notificaciones (solo admin)
+  // Campana de notificaciones (admin y mechanic)
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
   const bellRef = useRef<HTMLButtonElement>(null);
 
-  // Datos de alertas no leídas (solo para admin)
+  // Determinar si mostrar campana
   const isAdmin = user?.role === 'admin';
+  const isMechanic = user?.role === 'mechanic';
+  const showNotifications = isAdmin || isMechanic;
+
+  // Datos de alertas no leídas según rol
   const {
-    data: alerts,
-    isLoading,
-    isError,
-    error,
-    refetch,
+    data: adminAlerts,
+    isLoading: adminLoading,
+    isError: adminIsError,
+    error: adminError,
+    refetch: adminRefetch,
   } = useUnreadAlerts(isAdmin);
+
+  const {
+    data: mechanicAlerts,
+    isLoading: mechanicLoading,
+    isError: mechanicIsError,
+    error: mechanicError,
+    refetch: mechanicRefetch,
+  } = useMechanicUnreadAlerts(isMechanic);
+
+  // Unificar alertas y estados según rol
+  const alerts = isAdmin ? adminAlerts : mechanicAlerts;
+  const isLoading = isAdmin ? adminLoading : mechanicLoading;
+  const isError = isAdmin ? adminIsError : mechanicIsError;
+  const error = isAdmin ? adminError : mechanicError;
+  const refetch = isAdmin ? adminRefetch : mechanicRefetch;
 
   const unreadCount = alerts?.length ?? 0;
 
-  // Mutaciones
+  // Mutaciones (compartidas)
   const { mutate: markAsRead } = useMarkAlertAsRead();
   const { mutate: markAllAsRead } = useMarkAllAlertsAsRead();
 
@@ -175,10 +194,10 @@ export function TopBar({ onOpenMenu, isMenuOpen }: TopBarProps) {
         </div>
       </div>
 
-      {/* Derecha: campana (admin) + reloj + avatar (móvil) */}
+      {/* Derecha: campana (admin y mechanic) + reloj + avatar (móvil) */}
       <div className="flex shrink-0 items-center gap-3">
-        {/* Campana de notificaciones — solo admin */}
-        {isAdmin && (
+        {/* Campana de notificaciones — admin y mechanic */}
+        {showNotifications && (
           <div className="relative">
             <button
               ref={bellRef}
@@ -214,6 +233,8 @@ export function TopBar({ onOpenMenu, isMenuOpen }: TopBarProps) {
               error={error}
               onRetry={handleRetry}
               bellRef={bellRef}
+              userRole={user?.role ?? 'admin'}
+              userId={user?.id}
             />
           </div>
         )}

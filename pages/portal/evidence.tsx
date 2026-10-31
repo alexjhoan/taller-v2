@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
-import { EvidenceGallery } from "@/components/EvidenceGallery";
+import { EvidenceGallery, EvidenceItem } from "@/components/EvidenceGallery";
 
 export default function EvidencePage() {
   const router = useRouter();
   const { token } = router.query;
-  const [evidence, setEvidence] = useState<string[]>([]);
+  const [evidence, setEvidence] = useState<EvidenceItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,7 +28,7 @@ export default function EvidencePage() {
         if (!response.ok) throw new Error("Error al cargar la orden");
         const data = await response.json();
         if (mounted) {
-          // El backend devuelve evidence como array de URLs
+          // El backend devuelve evidence como array de objetos { url, evidence_type }
           setEvidence(data.body?.evidence || []);
         }
       } catch (err) {

@@ -1,6 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, endpoints } from '@/services/api';
+import { useRef, useEffect, useMemo } from 'react';
+import { api, endpoints, ApiError } from '@/services/api';
 import type { Alert } from '@/utils/alerts';
+import { useWorkOrders, WorkOrder as MechanicWorkOrder } from '@/hooks/useWorkOrders';
+import { useUserContext } from '@/context/UserContext';
+import { useSnackbar } from 'notistack';
 
 /**
  * Shape de la respuesta del backend para GET /api/alerts
@@ -13,13 +17,13 @@ interface AlertsResponse {
 }
 
 /**
- * Determina si un error es el modo offline (503 / OfflineMode).
+ * Determina si un error es el modo offline (503 / OfflineMode) o error de servidor (500).
  */
-function isOfflineError(error: unknown): boolean {
+function isOfflineOrServerError(error: unknown): boolean {
   const err = error as any;
   const status = err?.status ?? err?.response?.status;
   const statusText = err?.statusText ?? err?.response?.statusText;
-  return status === 503 || statusText === 'OfflineMode';
+  return status === 503 || statusText === 'OfflineMode' || status === 500;
 }
 
 /**
@@ -28,10 +32,19 @@ function isOfflineError(error: unknown): boolean {
  * - Refetch al recuperar el foco de la ventana
  * - Maneja offline 503: no lanza error global, deja data anterior en cache
  * - Cache key: ['alerts', 'unread']
+ * - Cuando llegan NUEVAS notificaciones (count aumenta), invalida la query de órdenes para actualizarlas
  * @param enabled Si false, desactiva la query (útil para solo admin)
  */
 export function useUnreadAlerts(enabled = true) {
-  return useQuery<Alert[], Error>({
+  const queryClient = useQueryClient();
+  const prevCountRef = useRef<number>(0);
+
+  // Trackear cambios en el count para invalidar órdenes cuando hay nuevas notificaciones
+  // Se usa un efecto que compara el count actual con el anterior
+  // NOTA: useQuery no expone onSuccess con previous data, así que usamos un ref + useEffect
+  // que observa los datos devueltos por la query
+  
+  const query = useQuery<Alert[], Error>({
     queryKey: ['alerts', 'unread'],
     queryFn: async (): Promise<Alert[]> => {
       const response = await api.get<AlertsResponse>(`${endpoints.alerts}?unread=1`);
@@ -42,11 +55,27 @@ export function useUnreadAlerts(enabled = true) {
     refetchOnWindowFocus: true,
     staleTime: 0,
     retry: 1,
-    // throwOnError: false para que React Query no lance y el componente
-    // pueda inspeccionar isError/error y decidir qué mostrar.
-    // En offline 503, el error se captura pero data anterior persiste en cache.
-    throwOnError: (error) => !isOfflineError(error),
+    throwOnError: (error) => !isOfflineOrServerError(error),
   });
+
+  // Efecto para detectar NUEVAS notificaciones (count aumentó)
+  // y invalidar la query de órdenes para que se actualicen
+  useEffect(() => {
+    if (!enabled || query.data === undefined) return;
+    
+    const currentCount = query.data.length;
+    
+    // Si el count aumentó respecto al anterior, hay notificaciones nuevas
+    if (prevCountRef.current > 0 && currentCount > prevCountRef.current) {
+      // Invalidar query de órdenes para que se actualicen con las nuevas notificaciones
+      queryClient.invalidateQueries({ queryKey: ['work_orders'] });
+    }
+    
+    // Actualizar ref con el count actual
+    prevCountRef.current = currentCount;
+  }, [query.data, enabled, queryClient]);
+
+  return query;
 }
 
 /**
@@ -69,7 +98,7 @@ export function useReadAlerts(enabled = true) {
     refetchOnWindowFocus: true,
     staleTime: 0,
     retry: 1,
-    throwOnError: (error) => !isOfflineError(error),
+    throwOnError: (error) => !isOfflineOrServerError(error),
   });
 }
 
@@ -80,6 +109,7 @@ export function useReadAlerts(enabled = true) {
  */
 export function useMarkAlertAsRead() {
   const queryClient = useQueryClient();
+  const { enqueueSnackbar } = useSnackbar();
 
   return useMutation({
     mutationFn: async (id: string) => {
@@ -87,6 +117,12 @@ export function useMarkAlertAsRead() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['alerts'] });
+    },
+    onError: (error: unknown) => {
+      const apiError = error as ApiError;
+      const body = apiError?.body as Record<string, unknown> | undefined;
+      const message = (body?.statusText as string) || apiError?.message || 'Error al marcar alerta como leída';
+      enqueueSnackbar(message, { variant: 'error', persist: false });
     },
   });
 }
@@ -98,13 +134,66 @@ export function useMarkAlertAsRead() {
  */
 export function useMarkAllAlertsAsRead() {
   const queryClient = useQueryClient();
+  const { enqueueSnackbar } = useSnackbar();
 
-  return useMutation({
+  return useMutation<{ updated: number }, Error, void>({
     mutationFn: async () => {
-      await api.post(`${endpoints.alerts}/read-all`, {});
+      const response = await api.post<{ updated: number }>(`${endpoints.alerts}/read-all`, {});
+      return response;
     },
-    onSuccess: () => {
+    onSuccess: (data: { updated: number }) => {
       queryClient.invalidateQueries({ queryKey: ['alerts'] });
+      if (data.updated > 0) {
+        enqueueSnackbar(`${data.updated} alerta${data.updated > 1 ? 's' : ''} marcada${data.updated > 1 ? 's' : ''} como leída`, { variant: 'success' });
+      }
+    },
+    onError: (error: unknown) => {
+      const apiError = error as ApiError;
+      const body = apiError?.body as Record<string, unknown> | undefined;
+      const message = (body?.statusText as string) || apiError?.message || 'Error al marcar todas como leídas';
+      enqueueSnackbar(message, { variant: 'error', persist: false });
     },
   });
+}
+
+/**
+ * Hook: alertas no leídas del MECÁNICO.
+ * - El backend ya filtra por token de usuario (JWT).
+ * - Mismo polling/refetch que admin.
+ * - NO filtramos en cliente: el backend ya filtra por JWT.
+ * @param enabled Si false, desactiva la query
+ */
+export function useMechanicUnreadAlerts(enabled = true) {
+  const { user } = useUserContext();
+  const queryClient = useQueryClient();
+  const prevCountRef = useRef<number>(0);
+
+  const query = useQuery<Alert[], Error>({
+    queryKey: ['alerts', 'unread', 'mechanic', user?.id],
+    queryFn: async (): Promise<Alert[]> => {
+      const response = await api.get<AlertsResponse>(`${endpoints.alerts}?unread=1`);
+      return response.body ?? [];
+    },
+    enabled: enabled && !!user?.id,
+    refetchInterval: 120_000,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+    retry: 1,
+    throwOnError: (error) => !isOfflineOrServerError(error),
+  });
+
+  // Efecto para detectar NUEVAS notificaciones y invalidar órdenes
+  useEffect(() => {
+    if (!enabled || query.data === undefined) return;
+    
+    const currentCount = query.data.length;
+    
+    if (prevCountRef.current > 0 && currentCount > prevCountRef.current) {
+      queryClient.invalidateQueries({ queryKey: ['work_orders'] });
+    }
+    
+    prevCountRef.current = currentCount;
+  }, [query.data, enabled, queryClient]);
+
+  return query;
 }
