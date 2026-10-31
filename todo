@@ -9,7 +9,7 @@
 
 [x] ver si se puede hacer un filtro de ordenes con solicitudes pendientes, ademas de agregar un item dentro de la card
 
-[] que la recepcion del vehiculo sea por una foto del carnet de circulacion, y dividir toda la recepcion en pasos como un formulario wizard
+[x] que la recepcion del vehiculo sea por una foto del carnet de circulacion, y dividir toda la recepcion en pasos como un formulario wizard
 
 [x] alertas para el mecanico, como puedo hacer para que el mecanico, cada lectura de cada alerta sea personal que si la lee un admin no aparesca leida en el perfil del mecanico? ademas la vista de alertas se debe ver, pero solo las alertas que corresponden a ese mecanico, un admin si puede ver todas las alertas
 

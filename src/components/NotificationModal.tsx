@@ -33,7 +33,7 @@ interface NotificationModalProps {
   /** Ref a la campana para devolver foco al cerrar */
   bellRef: React.RefObject<HTMLButtonElement>;
   /** Rol del usuario actual */
-  userRole: 'admin' | 'mechanic';
+  userRole: "admin" | "mechanic";
   /** ID del usuario actual (para filtrado de mecánico) */
   userId?: number;
 }
@@ -64,7 +64,7 @@ export function NotificationModal({
   // - Admin: ver todas las alertas
   // - Mecánico: ver solo alertas de órdenes asignadas
   const filteredAlerts = useMemo(() => {
-    if (userRole === 'admin') return alerts;
+    if (userRole === "admin") return alerts;
     // Para mecánico, filtrar por órdenes asignadas (simplificado)
     // En un implementación completa, se compararía userId con order.assigned_user_id
     // Por ahora mostramos todas pero con la estructura para filtrar después
@@ -115,7 +115,7 @@ export function NotificationModal({
       disableBackdropClose={false}
       disableEscapeClose={false}
     >
-      <div className='space-y-3'>
+      <div className='space-y-3 max-h-[70dvh] overflow-y-auto'>
         {/* Lista de alertas usando componente reutilizable AlertList */}
         <AlertList
           alerts={filteredAlerts}

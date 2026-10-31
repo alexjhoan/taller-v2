@@ -1106,6 +1106,7 @@ export function ReceptionCheckinWizard() {
                     value={formData.vehicle_year}
                     onChange={(e) => setFormData((prev) => ({ ...prev, vehicle_year: e.target.value }))}
                     placeholder='2020'
+                    inputMode='numeric'
                   />
                 </div>
                 <CustomInput
@@ -1114,6 +1115,7 @@ export function ReceptionCheckinWizard() {
                   value={formData.mileage}
                   onChange={(e) => setFormData((prev) => ({ ...prev, mileage: e.target.value }))}
                   placeholder='45000'
+                  inputMode='numeric'
                 />
               </div>
             </CustomCard>
@@ -1136,6 +1138,7 @@ export function ReceptionCheckinWizard() {
                     value={formData.customer_document_id}
                     onChange={(e) => setFormData((prev) => ({ ...prev, customer_document_id: e.target.value }))}
                     placeholder='V08500870'
+                    inputMode='numeric'
                   />
                   <CustomInput
                     label='Teléfono'
@@ -1168,7 +1171,7 @@ export function ReceptionCheckinWizard() {
                   leftIcon={<UserPlus className='h-4 w-4' />}
                   onClick={() => setIsAssignModalOpen(true)}
                 >
-                  <Users className='h-4 w-4' /> Gestionar
+                  Gestionar
                 </CustomButton>
               </div>
               {formData.assigned_user_id.length > 0 && (
@@ -1233,28 +1236,6 @@ export function ReceptionCheckinWizard() {
                 allowedTypes={["reception"]}
                 onFilesSelected={(files) => addEvidenceFiles(files)}
               />
-              {evidenceFiles.length > 0 && (
-                <div className='mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3'>
-                  {evidenceFiles.map((file) => (
-                    <div key={file.id} className='group relative overflow-hidden rounded-lg border border-slate-200'>
-                      {file.type === "video" ? (
-                        <video src={file.preview} className='h-32 w-full object-cover' muted playsInline />
-                      ) : (
-                        <img src={file.preview} alt='Evidencia' className='h-32 w-full object-cover' />
-                      )}
-                      <button
-                        type='button'
-                        onClick={() => removeEvidenceFile(file.id)}
-                        className='absolute top-1 right-1'
-                      >
-                        <div className='rounded-full bg-red-500/90 p-1 text-white'>
-                          <X className='h-4 w-4' />
-                        </div>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
             </CustomCard>
 
             <CustomCard>
@@ -1624,6 +1605,7 @@ export function ReceptionCheckinWizard() {
               <RotateCcw className='h-5 w-5' />
             </CustomButton>
             <CustomButton
+              type='button'
               size='lg'
               leftIcon={isProcessingOcr ? <Loader2 className='h-5 w-5 animate-spin' /> : <Camera className='h-5 w-5' />}
               onClick={capturePhoto}
