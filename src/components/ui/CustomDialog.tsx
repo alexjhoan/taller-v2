@@ -63,7 +63,7 @@ export function CustomDialog({
   if (!open) return null;
 
   return (
-    <div className='fixed inset-0 z-50000 flex items-center justify-center p-0'>
+    <div className="fixed inset-0 isolate z-[9999] flex items-center justify-center p-0">
       {/* Backdrop */}
       <div
         className='absolute inset-0 bg-slate-900/50 backdrop-blur-sm'

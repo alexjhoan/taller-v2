@@ -53,7 +53,7 @@ export function Sidebar({ isCollapsed, onToggleCollapse, isDrawerOpen, onCloseDr
     <aside
       id='sidebar-navigation'
       aria-label='Menú de navegación'
-      className={`fixed left-0 top-0 z-40 flex h-dvh flex-col border-r border-slate-200 bg-white transition-all duration-300 ${
+      className={`fixed left-0 top-0 z-20 flex h-dvh flex-col border-r border-slate-200 bg-white transition-all duration-300 ${
         isDrawerOpen ? "translate-x-0" : "max-xs:-translate-x-full max-xs:invisible"
       } ${isCollapsed ? "w-56 xs:w-14" : "w-56"}`}
     >
