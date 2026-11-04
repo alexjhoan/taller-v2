@@ -1,21 +1,21 @@
 # -------------------------------------------------------------
-# ETAPA 1: Compilación de la aplicación Next.js
+# ETAPA 1: Compilación de la aplicación Next.js con NPM
 # -------------------------------------------------------------
 FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Copiamos los archivos de dependencias
-COPY package.json ./
+# Copiamos los archivos de dependencias (asegúrate de tener el package-lock.json o package.json)
+COPY package.json package-lock.json* ./
 
-# Instalamos las dependencias necesarias
-RUN yarn install --frozen-lockfile
+# Si no existe package-lock.json, instalamos con npm install normal; si existe, usa ci para mayor velocidad
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
 # Copiamos el resto del código del frontend
 COPY . .
 
-# Ejecutamos el script de compilación (genera la carpeta 'out')
-RUN yarn build
+# Ejecutamos el script de compilación (genera la carpeta 'out' definida en tu next.config.mjs)
+RUN npm run build
 
 # -------------------------------------------------------------
 # ETAPA 2: Servidor Web ultraligero con Nginx
