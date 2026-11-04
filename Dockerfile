@@ -5,16 +5,16 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Copiamos los archivos de dependencias (asegúrate de tener el package-lock.json o package.json)
+# 1. Copiamos los archivos de dependencias primero para aprovechar la caché de Docker
 COPY package.json package-lock.json* ./
 
-# Si no existe package-lock.json, instalamos con npm install normal; si existe, usa ci para mayor velocidad
+# 2. Instalamos las dependencias
 RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
-# Copiamos el resto del código del frontend
+# 3. ¡CRÍTICO! Copiamos todo el código fuente del proyecto antes de compilar
 COPY . .
 
-# Ejecutamos el script de compilación (genera la carpeta 'out' definida en tu next.config.mjs)
+# 4. Ejecutamos el script de compilación (lee tu next.config.mjs y genera la carpeta 'out')
 RUN npm run build
 
 # -------------------------------------------------------------
