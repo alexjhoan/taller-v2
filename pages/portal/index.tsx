@@ -2,6 +2,8 @@ import { useRouter } from 'next/router';
 import { useEffect } from 'react';
 import { ClientQuotationPortal } from '@/components/ClientQuotationPortal';
 
+export const dynamic = 'force-dynamic';
+
 export default function PortalPage() {
   const router = useRouter();
   const { token } = router.query;

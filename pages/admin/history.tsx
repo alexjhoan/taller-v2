@@ -13,6 +13,8 @@ import { toNumericIdArray } from "@/utils/ids";
 import { AdminOrderDetailReadOnly } from "@/components/AdminOrderDetailReadOnly";
 import { OrderCard } from "@/components/OrderCard";
 
+export const dynamic = 'force-dynamic';
+
 function AdminHistoryPage() {
   const router = useRouter();
   const [selectedOrder, setSelectedOrder] = useState<WorkOrder | null>(null);

@@ -2,6 +2,8 @@ import { TechnicianOrderView } from '@/components/TechnicianOrderView';
 import { withAuth } from '@/components/withAuth';
 import { Layout } from '@/components/Layout';
 
+export const dynamic = 'force-dynamic';
+
 function TechnicianOrderPage() {
   return (
     <Layout>

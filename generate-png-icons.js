@@ -1,0 +1,40 @@
+const sharp = require('sharp');
+const fs = require('fs');
+const path = require('path');
+
+const iconsDir = path.join(__dirname, 'public', 'icons');
+const sizes = [72, 96, 128, 144, 152, 192, 384, 512];
+
+// Create a base SVG for the icon
+const createIconSvg = (size) => `
+<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1d4ed8;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="${size}" height="${size}" rx="${size * 0.2}" fill="url(#grad)"/>
+  <g transform="translate(${size * 0.2}, ${size * 0.2}) scale(${size * 0.6 / 24})">
+    <path d="M14.7 17.3c-.4.4-1 .4-1.4 0l-3.1-3.1a2.5 2.5 0 0 1 0-3.5L15.1 4.9a2.5 2.5 0 0 1 3.5 0l2.1 2.1c.4.4.4 1 0 1.4L11.3 22H7v-2h4.3l7.4-7.4-2.1-2.1c-.4-.4-1-.4-1.4 0L9.9 13.9a.75.75 0 0 0 0 1.1l2.1 2.1c.3.3.7.4 1.1.1l3.1-3.1c.2-.2.3-.5.1-.7L14.7 17.3Z" fill="white"/>
+    <path d="M4.5 19.5c0 .8.7 1.5 1.5 1.5s1.5-.7 1.5-1.5-.7-1.5-1.5-1.5-1.5.7-1.5 1.5Z" fill="#1d4ed8"/>
+    <path d="M19.5 4.5c0 .8.7 1.5 1.5 1.5s1.5-.7 1.5-1.5-.7-1.5-1.5-1.5-1.5.7-1.5 1.5Z" fill="#1d4ed8"/>
+  </g>
+</svg>`;
+
+async function generateIcons() {
+  for (const size of [72, 96, 128, 144, 152, 192, 384, 512]) {
+    const svg = createIconSvg(size);
+    const pngBuffer = await sharp(Buffer.from(svg))
+      .resize(size, size)
+      .png()
+      .toBuffer();
+    
+    await fs.promises.writeFile(path.join(__dirname, 'public', 'icons', `icon-${size}x${size}.png`), pngBuffer);
+    console.log(`Created icon-${size}x${size}.png`);
+  }
+  
+  console.log('All PNG icons generated!');
+}
+
+generateIcons().catch(console.error);

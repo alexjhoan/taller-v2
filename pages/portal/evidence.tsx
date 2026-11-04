@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { EvidenceGallery, EvidenceItem } from "@/components/EvidenceGallery";
 
+export const dynamic = 'force-dynamic';
+
 export default function EvidencePage() {
   const router = useRouter();
   const { token } = router.query;

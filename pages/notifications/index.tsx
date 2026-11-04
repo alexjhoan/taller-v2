@@ -10,6 +10,8 @@ import { useUnreadAlerts, useReadAlerts, useMarkAlertAsRead, useMarkAllAlertsAsR
 import { formatUnreadCount } from '@/utils/alerts';
 import { useUserContext } from '@/context/UserContext';
 
+export const dynamic = 'force-dynamic';
+
 function NotificationsPage() {
   const router = useRouter();
   const { user } = useUserContext();

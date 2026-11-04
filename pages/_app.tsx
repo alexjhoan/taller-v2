@@ -4,6 +4,7 @@ import { SnackbarProvider } from 'notistack';
 import { UserProvider } from '@/context/UserContext';
 import { DialogsProvider } from '@/context/DialogsContext';
 import { WorkshopProvider } from '@/context/WorkshopContext';
+import { PWAInstallPrompt } from '@/components/PWAInstallPrompt';
 import '@/styles/globals.css';
 
 const queryClient = new QueryClient({
@@ -27,6 +28,7 @@ export default function App({ Component, pageProps }: AppProps) {
           <DialogsProvider>
             <WorkshopProvider>
               <Component {...pageProps} />
+              <PWAInstallPrompt autoShowDelay={30000} mobileOnly={true} />
             </WorkshopProvider>
           </DialogsProvider>
         </UserProvider>

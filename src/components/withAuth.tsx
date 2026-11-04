@@ -27,6 +27,9 @@ export function withAuth<P extends object>(WrappedComponent: ComponentType<P>, o
       // a /login antes de saber si hay sesión (y login.tsx terminaría en "/")
       if (!hydrated) return;
 
+      // Solo acceder a document.cookie en el cliente
+      if (typeof document === 'undefined') return;
+      
       const token = document.cookie.split("; ").find((row) => row.startsWith(`${AUTH_COOKIE_NAME}=`));
 
       if (!token || !isAuthenticated) {

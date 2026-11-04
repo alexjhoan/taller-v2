@@ -2,6 +2,8 @@ import { useRouter } from 'next/router';
 import { ShieldAlert } from 'lucide-react';
 import { CustomButton } from '@/components/ui/CustomButton';
 
+export const dynamic = 'force-dynamic';
+
 export default function UnauthorizedPage() {
   const router = useRouter();
 

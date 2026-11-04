@@ -9,6 +9,14 @@
 
 import type { User, UserRole } from '@/context/UserContext';
 
+// Polyfill para atob/btoa en Node.js (usado durante build estático)
+if (typeof globalThis.atob === 'undefined') {
+  globalThis.atob = (b64: string) => Buffer.from(b64, 'base64').toString('binary');
+}
+if (typeof globalThis.btoa === 'undefined') {
+  globalThis.btoa = (bin: string) => Buffer.from(bin, 'binary').toString('base64');
+}
+
 /** Vigencia de las cookies de sesión (JWT + datos de usuario): 7 días. */
 export const SESSION_MAX_AGE = 60 * 60 * 24 * 7;
 

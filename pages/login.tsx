@@ -8,6 +8,8 @@ import { CustomButton } from "@/components/ui/CustomButton";
 import { api, endpoints } from "@/services/api";
 import { useUserContext } from "@/context/UserContext";
 
+export const dynamic = 'force-dynamic';
+
 // --- Tipos ---
 
 interface LoginResponseBody {

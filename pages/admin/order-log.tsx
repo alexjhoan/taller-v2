@@ -9,6 +9,8 @@ import { Layout } from "@/components/Layout";
 import { useOrderAuditLog } from "@/hooks/useOrderAuditLog";
 import { AuditLogEntry } from "@/types/audit";
 
+export const dynamic = 'force-dynamic';
+
 // --- Utilidades de formato ---
 
 function formatDateTime(isoString: string): { time: string; date: string } {

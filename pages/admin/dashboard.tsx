@@ -13,6 +13,8 @@ import { AdminUserDetail } from "@/components/AdminUserDetail";
 import { CreateUserModal } from "@/components/CreateUserModal";
 import { WorkOrderList } from "@/components/WorkOrderList";
 
+export const dynamic = 'force-dynamic';
+
 type Tab = "orders" | "users";
 
 function AdminDashboardPage() {

@@ -3,6 +3,8 @@ import { withAuth } from "@/components/withAuth";
 import { Layout } from "@/components/Layout";
 import { ReceptionCheckinWizard } from "@/components/ReceptionCheckinWizard";
 
+export const dynamic = 'force-dynamic';
+
 function ReceptionCheckinPage() {
   return (
     <Layout>

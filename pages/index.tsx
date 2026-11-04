@@ -3,6 +3,8 @@ import { useUserContext } from '@/context/UserContext';
 import { withAuth } from '@/components/withAuth';
 import { Layout } from '@/components/Layout';
 
+export const dynamic = 'force-dynamic';
+
 function HomePage() {
   const { user } = useUserContext();
 
