@@ -6,7 +6,7 @@ FROM node:18-alpine AS builder
 WORKDIR /app
 
 # Copiamos los archivos de dependencias
-COPY package.json yarn.lock ./
+COPY package.json ./
 
 # Instalamos las dependencias necesarias
 RUN yarn install --frozen-lockfile
