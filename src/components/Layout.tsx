@@ -47,7 +47,7 @@ export function Layout({ children }: LayoutProps) {
         <div
           onClick={handleCloseDrawer}
           aria-hidden='true'
-          className='fixed inset-0 z-30 hidden animate-fade-in bg-slate-900/40 max-xs:block'
+          className='fixed inset-0 z-[19] hidden animate-fade-in bg-slate-900/40 max-xs:block'
         />
       )}
 
