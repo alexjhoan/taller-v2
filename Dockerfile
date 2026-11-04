@@ -25,6 +25,9 @@ FROM nginx:alpine AS runner
 # Copiamos los archivos estáticos generados en la Etapa 1 a la carpeta pública de Nginx
 COPY --from=builder /app/out /usr/share/nginx/html
 
+# Copiamos nuestra configuración personalizada de Nginx
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
 # Exponemos el puerto estándar 80
 EXPOSE 80
 
