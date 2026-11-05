@@ -1,7 +1,7 @@
-import { ReactNode, createContext, useContext, useState, useEffect } from 'react';
+import { ReactNode, createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useCookies } from 'react-cookie';
 import { AUTH_COOKIE_NAME, SESSION_USER_COOKIE_NAME } from '@/utils/const';
-import { setApiToken, setApiUser } from '@/services/api';
+import { setApiToken, setApiUser, setGlobalLogoutHandler } from '@/services/api';
 import { restoreSessionUser, SESSION_MAX_AGE } from '@/utils/session';
 
 export type UserRole = 'admin' | 'mechanic';
@@ -45,6 +45,38 @@ export function UserProvider({ children }: { children: ReactNode }) {
   // Opciones idénticas para ambas cookies de sesión (token y datos de usuario)
   const sessionCookieOptions = { path: '/', maxAge: SESSION_MAX_AGE, sameSite: 'strict' } as const;
 
+  // Función para limpiar completamente la sesión (estado + cookies + API)
+  const clearSession = useCallback(() => {
+    setUser(null);
+    setToken(null);
+    setApiToken(null);
+    setApiUser(null);
+    removeCookie(AUTH_COOKIE_NAME, { path: '/' });
+    removeCookie(SESSION_USER_COOKIE_NAME, { path: '/' });
+  }, []);
+
+  // Registrar handler global de logout para que la API pueda limpiar la sesión en 401/403
+  useEffect(() => {
+    // El handler global debe limpiar TODO: estado + cookies + API
+    const handleGlobalLogout = () => {
+      setUser(null);
+      setToken(null);
+      setApiToken(null);
+      setApiUser(null);
+      // Limpiar cookies directamente (no usar removeCookie del hook para evitar dependencias)
+      if (typeof document !== 'undefined') {
+        document.cookie = `${AUTH_COOKIE_NAME}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict`;
+        document.cookie = `${SESSION_USER_COOKIE_NAME}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict`;
+      }
+    };
+    
+    setGlobalLogoutHandler(handleGlobalLogout);
+    
+    return () => {
+      setGlobalLogoutHandler(() => {});
+    };
+  }, []);
+
   // Restaurar sesión desde las cookies al montar
   useEffect(() => {
     const savedToken = cookies[AUTH_COOKIE_NAME];
@@ -60,6 +92,15 @@ export function UserProvider({ children }: { children: ReactNode }) {
         setToken(token);
         setApiToken(token);
         setApiUser(restored);
+      } else {
+        // Token inválido o expirado: limpiar todo y no restaurar sesión
+        // No redirigir aquí, dejar que withAuth maneje la redirección
+        setUser(null);
+        setToken(null);
+        setApiToken(null);
+        setApiUser(null);
+        removeCookie(AUTH_COOKIE_NAME, { path: '/' });
+        removeCookie(SESSION_USER_COOKIE_NAME, { path: '/' });
       }
     }
     setHydrated(true);

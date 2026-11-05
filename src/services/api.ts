@@ -10,6 +10,13 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC
 let authToken: string | null = null;
 let apiUser: { id?: number; firstName: string; lastName?: string; role: string } | null = null;
 
+// Callback para manejar logout global (se setea desde UserProvider)
+let globalLogoutHandler: (() => void) | null = null;
+
+export function setGlobalLogoutHandler(handler: () => void): void {
+  globalLogoutHandler = handler;
+}
+
 export function setApiToken(token: string | null): void {
   authToken = token;
 }
@@ -32,6 +39,25 @@ interface RequestOptions {
   headers?: Record<string, string>;
   isMultipart?: boolean;
   skipUpdatedBy?: boolean;
+}
+
+/**
+ * Maneja errores de autenticación (401/403) redirigiendo al login
+ * y limpiando la sesión globalmente.
+ */
+function handleAuthError(status: number): never {
+  // Limpiar sesión global si existe el handler
+  if (globalLogoutHandler) {
+    globalLogoutHandler();
+  }
+  
+  // Redirigir al login (solo en cliente)
+  if (typeof window !== 'undefined') {
+    window.location.href = '/login';
+  }
+  
+  // Lanzar error genérico para que no rompa la app
+  throw new ApiError(status, status === 401 ? 'Sesión expirada' : 'Acceso denegado', { statusText: status === 401 ? 'Token inválido o expirado' : 'No tiene permisos' });
 }
 
 async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
@@ -78,6 +104,11 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
   }
 
   const response = await fetch(url, config);
+
+  // Manejar errores de autenticación (401/403) antes de procesar el body
+  if (response.status === 401 || response.status === 403) {
+    handleAuthError(response.status);
+  }
 
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));

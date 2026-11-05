@@ -28,6 +28,9 @@ COPY --from=builder /app/out /usr/share/nginx/html
 # Copiamos nuestra configuración personalizada de Nginx
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
+# Asegurar permisos de lectura universales para los archivos estáticos
+RUN chmod -R +r /usr/share/nginx/html
+
 # Exponemos el puerto estándar 80
 EXPOSE 80
 
