@@ -28,6 +28,8 @@ import {
   RotateCcw,
   UserPlus,
   Users,
+  Pencil,
+  Send,
 } from "lucide-react";
 
 type Step = 1 | 2 | 3;
@@ -504,6 +506,13 @@ export function ReceptionCheckinWizard() {
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
+
+  // Modal de WhatsApp tras crear la orden (mismo patrón que AdminOrderDetail)
+  const [whatsappConfirm, setWhatsappConfirm] = useState<{
+    message: string;
+    phone: string;
+  } | null>(null);
+  const [isWhatsappMessageEditable, setIsWhatsappMessageEditable] = useState(false);
   const [isProcessingOcr, setIsProcessingOcr] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -891,6 +900,16 @@ export function ReceptionCheckinWizard() {
             }
           }
 
+          // Capturar datos del cliente y link del portal ANTES de resetear el
+          // formulario; el token público ({ id, token } de POST /api/orders)
+          // es work_orders.public_token (API_FRONTEND.md, línea 254).
+          const portalUrl = `${process.env.NEXT_PUBLIC_PORTAL_URL || (typeof window !== "undefined" ? window.location.origin : "")}/portal?token=${response?.token ?? ""}`;
+          setWhatsappConfirm({
+            message: `Hola ${formData.customer_name}, hemos registrado su orden bajo el numero ${response?.id ?? ""} . Para revisar tu orden, presupuesto y progreso de tu vehículo visita este link: ${portalUrl}`,
+            phone: formData.customer_phone,
+          });
+          setIsWhatsappMessageEditable(false);
+
           // Resetear formulario y volver al paso 1 SOLO en éxito
           setFormData({
             vehicle_plate: "",
@@ -1029,6 +1048,30 @@ export function ReceptionCheckinWizard() {
       })}
     </>
   );
+
+  // --- WhatsApp tras crear la orden (mismo patrón que AdminOrderDetail) ---
+
+  const closeWhatsappConfirm = () => {
+    setWhatsappConfirm(null);
+    setIsWhatsappMessageEditable(false);
+  };
+
+  const handleSendWhatsapp = () => {
+    if (!whatsappConfirm) return;
+    // Convertir formato local a internacional: 04121234567 → 584121234567
+    let phone = whatsappConfirm.phone.replace(/\D/g, "");
+    // Si empieza con 0, reemplazar por 58 (código de Venezuela)
+    if (phone.startsWith("0")) {
+      phone = "58" + phone.substring(1);
+    }
+    // Si empieza con 58, está bien; si no y tiene 11 dígitos, agregar 58
+    else if (!phone.startsWith("58") && phone.length === 11) {
+      phone = "58" + phone;
+    }
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(whatsappConfirm.message)}`;
+    window.open(url, "_blank");
+    closeWhatsappConfirm();
+  };
 
   return (
     <div className='mx-auto max-w-2xl space-y-6 px-4 pb-8 sm:px-6'>
@@ -1661,6 +1704,50 @@ export function ReceptionCheckinWizard() {
             </CustomButton>
             <CustomButton onClick={() => setIsAssignModalOpen(false)} leftIcon={<CheckCircle2 className='h-4 w-4' />}>
               Guardar
+            </CustomButton>
+          </div>
+        </div>
+      </CustomDialog>
+
+      {/* Modal de confirmación de envío por WhatsApp (tras crear la orden) */}
+      <CustomDialog
+        open={whatsappConfirm !== null}
+        onClose={closeWhatsappConfirm}
+        title='Confirmar envío por WhatsApp'
+        maxWidth='lg'
+      >
+        <div className='space-y-4'>
+          <div className='flex items-center justify-between gap-3'>
+            <label className='block text-sm font-semibold text-slate-700'>Mensaje</label>
+            <CustomButton
+              type='button'
+              variant='secondary'
+              size='sm'
+              leftIcon={<Pencil className='h-3.5 w-3.5' />}
+              onClick={() => setIsWhatsappMessageEditable((prev) => !prev)}
+            >
+              {isWhatsappMessageEditable ? "Bloquear" : "Editar"}
+            </CustomButton>
+          </div>
+          <textarea
+            value={whatsappConfirm?.message ?? ""}
+            onChange={(e) => setWhatsappConfirm((prev) => (prev ? { ...prev, message: e.target.value } : prev))}
+            readOnly={!isWhatsappMessageEditable}
+            rows={6}
+            className={`input-field resize-none ${isWhatsappMessageEditable ? "" : "bg-slate-50 cursor-not-allowed"}`}
+            placeholder='Mensaje que se enviará...'
+          />
+          <div className='flex gap-3'>
+            <CustomButton type='button' variant='secondary' className='flex-1' onClick={closeWhatsappConfirm}>
+              Cancelar
+            </CustomButton>
+            <CustomButton
+              type='button'
+              className='flex-1'
+              leftIcon={<Send className='h-4 w-4' />}
+              onClick={handleSendWhatsapp}
+            >
+              Enviar
             </CustomButton>
           </div>
         </div>
