@@ -187,4 +187,34 @@ export const endpoints = {
 
   // Vehículos
   vehicles: '/vehicles',
+
+  // Versión de la app (cache busting)
+  versionApp: '/get-version-app',
 };
+
+/**
+ * Obtiene la versión de la app del backend (GET /get-version-app).
+ * Devuelve el string de la versión (ej. "0.0.1") desde body.version, o null si falla.
+ * Usa fetch directo (no apiRequest) para que un fallo de red no toque la cola
+ * offline ni dispare el redirect de 401: esta petición nunca debe tumbar la app.
+ * Va con Authorization (JWT) porque el backend valida así que la petición
+ * viene del front correcto.
+ */
+export async function apiGetVersionApp(): Promise<string | null> {
+  try {
+    const requestHeaders: Record<string, string> = {};
+    if (authToken) {
+      requestHeaders['Authorization'] = `Bearer ${authToken}`;
+    }
+    const response = await fetch(`${BASE_URL}${endpoints.versionApp}`, {
+      headers: requestHeaders,
+    });
+    if (!response.ok) return null;
+    // Formato del endpoint: { status, body: [{ id, version }], statusText, total }
+    const data = (await response.json()) as { body?: Array<{ version?: string }> };
+    const version = data?.body?.[0]?.version;
+    return typeof version === 'string' && version.length > 0 ? version : null;
+  } catch {
+    return null;
+  }
+}
