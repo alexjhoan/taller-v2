@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo } from "react";
+import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { useSnackbar } from "notistack";
 import { CustomCard } from "@/components/ui/CustomCard";
 import { CustomInput } from "@/components/ui/CustomInput";
@@ -504,6 +504,10 @@ export function ReceptionCheckinWizard() {
   // --- Cámara + OCR (tarjeta de circulación) ---
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  // Stream siempre vivo en ref: los callbacks del modal (captura, cierre)
+  // tienen deps estables y sin ref capturarían una versión vieja con
+  // cameraStream=null y los tracks quedarían abiertos.
+  const cameraStreamRef = useRef<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
 
@@ -571,6 +575,7 @@ export function ReceptionCheckinWizard() {
         audio: false,
       });
       setCameraStream(stream);
+      cameraStreamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
@@ -597,14 +602,18 @@ export function ReceptionCheckinWizard() {
   }, [facingMode]);
 
   const stopCamera = useCallback(() => {
-    if (cameraStream) {
-      cameraStream.getTracks().forEach((track) => track.stop());
-      setCameraStream(null);
+    // Stream en ref (no en el closure del callback): evita la versión vieja
+    // de stopCamera con cameraStream=null, que dejaba tracks abiertos.
+    const stream = cameraStreamRef.current;
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current = null;
     }
+    setCameraStream(null);
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-  }, [cameraStream]);
+  }, []);
 
   const switchCamera = useCallback(() => {
     stopCamera();
@@ -617,6 +626,17 @@ export function ReceptionCheckinWizard() {
     setIsCameraModalOpen(false);
     setCameraError(null);
     setIsProcessingOcr(false);
+  }, [stopCamera]);
+
+  // La cámara SOLO corre mientras el modal esté abierto: al cerrar (por
+  // cualquier vía) o desmontar el wizard se detiene siempre.
+  useEffect(() => {
+    if (!isCameraModalOpen) {
+      stopCamera();
+    }
+  }, [isCameraModalOpen, stopCamera]);
+  useEffect(() => {
+    return () => stopCamera();
   }, [stopCamera]);
 
   const runOcrOnImage = useCallback(async (file: File) => {

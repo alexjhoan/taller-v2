@@ -9,6 +9,8 @@ import {
   Phone,
   Shield,
   Edit3,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { CustomCard } from '@/components/ui/CustomCard';
 import { CustomButton } from '@/components/ui/CustomButton';
@@ -27,6 +29,8 @@ interface UserFormData {
   phone: string;
   role: 'admin' | 'mechanic';
   active: number;
+  /** Vacío = mantener la contraseña actual (no se envía al backend) */
+  password: string;
 }
 
 // --- Componente ---
@@ -43,6 +47,8 @@ export function AdminUserDetail({ user, onBack }: AdminUserDetailProps) {
   const [originalData, setOriginalData] = useState<UserFormData | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     const data: UserFormData = {
@@ -52,6 +58,7 @@ export function AdminUserDetail({ user, onBack }: AdminUserDetailProps) {
       phone: user.phone,
       role: user.role,
       active: user.active,
+      password: '',
     };
     setFormData(data);
     setOriginalData(data);
@@ -60,12 +67,17 @@ export function AdminUserDetail({ user, onBack }: AdminUserDetailProps) {
   const handleChange = (field: keyof UserFormData, value: string | number) => {
     if (!formData) return;
     setFormData({ ...formData, [field]: value });
+    if (field === 'password') {
+      setPasswordError(undefined);
+    }
   };
 
   const handleCancel = () => {
     if (originalData) {
       setFormData(originalData);
       setIsEditing(false);
+      setPasswordError(undefined);
+      setShowPassword(false);
       enqueueSnackbar('Cambios cancelados', { variant: 'info' });
     }
   };
@@ -73,10 +85,17 @@ export function AdminUserDetail({ user, onBack }: AdminUserDetailProps) {
   const handleSave = async () => {
     if (!formData) return;
 
+    // Contraseña: opcional; si se escribe algo se valida igual que al crear
+    const newPassword = formData.password.trim();
+    if (newPassword && newPassword.length < 8) {
+      setPasswordError('La contraseña debe tener al menos 8 caracteres');
+      return;
+    }
+
     setIsSaving(true);
 
     try {
-      const payload = {
+      const payload: Record<string, unknown> = {
         id: user.id,
         first_name: formData.first_name,
         last_name: formData.last_name,
@@ -85,13 +104,21 @@ export function AdminUserDetail({ user, onBack }: AdminUserDetailProps) {
         role: formData.role,
         active: formData.active,
       };
+      // Vacío = mantener la contraseña actual: no se envía el campo
+      if (newPassword) {
+        payload.password = newPassword;
+      }
 
       await apiClient.patch(endpoints.users, payload, {
         successMessage: 'Usuario actualizado exitosamente',
       });
 
-      setOriginalData(formData);
+      // Con 200 del backend: limpiar el campo password (estado y copia base),
+      // para que al reabrir edición quede vacío de nuevo
+      setFormData({ ...formData, password: '' });
+      setOriginalData({ ...formData, password: '' });
       setIsEditing(false);
+      setShowPassword(false);
     } catch (error) {
       // El error ya se muestra globalmente
     } finally {
@@ -175,6 +202,33 @@ export function AdminUserDetail({ user, onBack }: AdminUserDetailProps) {
               value={formData.phone}
               onChange={(e) => handleChange('phone', e.target.value)}
             />
+            <div>
+              <label htmlFor="edit-user-password" className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Contraseña
+              </label>
+              <div className="relative">
+                <CustomInput
+                  id="edit-user-password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={formData.password}
+                  onChange={(e) => handleChange('password', e.target.value)}
+                  error={passwordError}
+                  placeholder="••••••••"
+                  helperText="Opcional: solo escribe aquí si quieres cambiarla"
+                  autoComplete="new-password"
+                  className="pr-11"
+                  disabled={isSaving}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                  className="absolute right-3 top-0 flex h-10 items-center justify-center text-slate-400 transition-colors hover:text-slate-600"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="mb-1.5 block text-sm font-semibold text-slate-700">

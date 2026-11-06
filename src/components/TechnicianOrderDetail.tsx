@@ -579,22 +579,48 @@ export function TechnicianOrderDetail({ order, onBack }: TechnicianOrderDetailPr
             parts.map((part) => (
               <div
                 key={part.id}
-                className='flex items-start gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3.5'
+                className='space-y-3 rounded-xl border border-slate-100 bg-slate-50 p-3.5'
               >
-                <div className='mt-0.5'>{getCriticalityIcon(part.criticality)}</div>
-                <div className='flex-1 min-w-0'>
-                  <p className='text-sm font-bold text-slate-800 truncate'>{part.name}</p>
-                  <p className='mt-0.5 text-xs font-medium text-slate-400'>Cant: {part.quantity}</p>
-                  {part.notes && <p className='mt-2 text-xs italic text-slate-500'>&ldquo;{part.notes}&rdquo;</p>}
+                {/* Fila 1: criticidad + nombre + origen */}
+                <div className='flex items-start justify-between gap-2'>
+                  <div className='flex min-w-0 items-start gap-2'>
+                    {getCriticalityIcon(part.criticality)}
+                    <p className='min-w-0 flex-1 truncate text-sm font-bold text-slate-800'>{part.name}</p>
+                  </div>
+                  {part.requestedByTechnician && (
+                    <CustomBadge variant='info' className='shrink-0'>
+                      Solicitud del técnico
+                    </CustomBadge>
+                  )}
                 </div>
-                <div className='flex flex-wrap items-center justify-end gap-2'>
+
+                {/* Fila 2: datos alineados en columnas — sin partir valores
+                    a mitad de línea (el fallo del diseño previo).
+                    RF: los precios COP no son visibles para técnicos. */}
+                <div className='grid grid-cols-2 gap-2 rounded-lg bg-white px-3 py-2.5'>
+                  <div>
+                    <p className='text-[10px] font-semibold uppercase tracking-wide text-slate-400'>Cant.</p>
+                    <p className='text-sm font-bold text-slate-800'>{part.quantity}</p>
+                  </div>
+                  <div>
+                    <p className='text-[10px] font-semibold uppercase tracking-wide text-slate-400'>Criticidad</p>
+                    <p className='text-sm font-bold text-slate-800'>
+                      {part.criticality === 'critical' ? 'Crítica' : part.criticality === 'preventive' ? 'Preventiva' : 'General'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Fila 3: notas (solo si hay) */}
+                {part.notes && (
+                  <p className='text-xs italic text-slate-500'>&ldquo;{part.notes}&rdquo;</p>
+                )}
+
+                {/* Fila 4: estado a la izquierda, acciones a la derecha.
+                    RF-13 — El técnico solo puede ELIMINAR sus propias
+                    solicitudes no aprobadas; para el resto no se ofrece
+                    botón (se oculta, no se deshabilita). */}
+                <div className='flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2.5'>
                   {getPartStatusBadge(part.approvalStatus)}
-                  {/* RF-9 — Origen del repuesto: etiqueta junto al badge de
-                      estado solo cuando lo solicitó el técnico. */}
-                  {part.requestedByTechnician && <CustomBadge variant='info'>Solicitud del técnico</CustomBadge>}
-                  {/* RF-13 — El técnico solo puede ELIMINAR sus propias
-                      solicitudes no aprobadas; para el resto no se ofrece
-                      botón (se oculta, no se deshabilita). */}
                   {canTechnicianDeletePart(part) && (
                     <button
                       onClick={() => deletePart(part.id)}

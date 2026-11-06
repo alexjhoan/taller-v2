@@ -9,6 +9,7 @@ import { AlertList } from '@/components/AlertList';
 import { useUnreadAlerts, useReadAlerts, useMarkAlertAsRead, useMarkAllAlertsAsRead, useMechanicUnreadAlerts } from '@/hooks/useAlerts';
 import { formatUnreadCount } from '@/utils/alerts';
 import { useUserContext } from '@/context/UserContext';
+import { PushNotificationsToggle } from '@/components/PushNotificationsToggle';
 
 export const dynamic = 'force-dynamic';
 
@@ -88,6 +89,9 @@ function NotificationsPage() {
         </div>
 
         <NotificationTabs activeTab={tab} onChange={(newTab) => router.push(`/notifications?tab=${newTab}`, undefined, { shallow: true })} unreadCount={unreadCount} readCount={readCount} />
+
+        {/* Toggle de notificaciones push */}
+        <PushNotificationsToggle />
 
         <div id={tab === 'unread' ? 'panel-unread' : 'panel-read'} role="tabpanel" aria-labelledby={tab === 'unread' ? 'tab-unread' : 'tab-read'}>
           <AlertList

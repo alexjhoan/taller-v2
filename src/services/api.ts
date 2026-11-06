@@ -103,7 +103,19 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
     config.body = isMultipart ? (requestBody as FormData) : JSON.stringify(requestBody);
   }
 
-  const response = await fetch(url, config);
+  let response: Response;
+  try {
+    response = await fetch(url, config);
+  } catch {
+    // TypeError "Failed to fetch": red caída, DNS, CORS o servidor apagado.
+    // Nunca debe tumbar la app: se convierte al mismo contrato OfflineMode
+    // (503) que ya manejan todos los flujos, que muestran snackbar y
+    // encolan en LocalForage cuando aplica.
+    console.error('[api] Sin conexión con el servidor:', url);
+    throw new ApiError(503, 'OfflineMode', {
+      statusText: 'No hay conexión con el servidor',
+    });
+  }
 
   // Manejar errores de autenticación (401/403) antes de procesar el body
   if (response.status === 401 || response.status === 403) {
@@ -147,6 +159,13 @@ export const api = {
   delete: <T>(endpoint: string) => apiRequest<T>(endpoint, { method: 'DELETE' }),
   upload: <T>(endpoint: string, formData: FormData) =>
     apiRequest<T>(endpoint, { method: 'POST', body: formData, isMultipart: true }),
+
+  // Push notifications
+  pushPublicKey: () => apiRequest<{ public_key: string }>(endpoints.pushPublicKey, { method: 'GET' }),
+  pushSubscribe: (payload: { endpoint: string; keys: { p256dh: string; auth: string }; user_agent?: string }) =>
+    apiRequest<void>(endpoints.pushSubscribe, { method: 'POST', body: payload }),
+  pushUnsubscribe: (endpoint: string) =>
+    apiRequest<void>(endpoints.pushUnsubscribe, { method: 'POST', body: { endpoint } }),
 };
 
 // --- Endpoints específicos ---
@@ -190,6 +209,11 @@ export const endpoints = {
 
   // Versión de la app (cache busting)
   versionApp: '/get-version-app',
+
+  // Push notifications
+  pushPublicKey: '/api/push/public-key',
+  pushSubscribe: '/api/push/subscribe',
+  pushUnsubscribe: '/api/push/unsubscribe',
 };
 
 /**

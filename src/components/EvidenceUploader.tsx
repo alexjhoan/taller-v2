@@ -203,6 +203,12 @@ export function EvidenceUploader({
   };
 
   // --- Camera Modal Logic ---
+  // El stream vive en un ref: los callbacks del modal (captura, cierre) son
+  // variados con deps estables y sin ref capturarían una versión vieja con
+  // `cameraStream = null` y ¡track.stop() nunca se ejecutaría! (la cámara
+  // quedaba encendida tras tomar la foto).
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+
   const startCamera = useCallback(async () => {
     setCameraError(null);
     try {
@@ -210,6 +216,7 @@ export function EvidenceUploader({
         video: { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
         audio: false,
       });
+      cameraStreamRef.current = stream;
       setCameraStream(stream);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -238,14 +245,16 @@ export function EvidenceUploader({
   }, [facingMode]);
 
   const stopCamera = useCallback(() => {
-    if (cameraStream) {
-      cameraStream.getTracks().forEach((track) => track.stop());
-      setCameraStream(null);
+    const stream = cameraStreamRef.current;
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current = null;
     }
+    setCameraStream(null);
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-  }, [cameraStream]);
+  }, []);
 
   const switchCamera = useCallback(() => {
     stopCamera();
@@ -296,6 +305,18 @@ export function EvidenceUploader({
     stopCamera();
     setIsCameraModalOpen(false);
     setCameraError(null);
+  }, [stopCamera]);
+
+  // La cámara SOLO debe estar en funcionamiento mientras el modal esté
+  // abierto: al cerrar (por cualquier vía) o desmontar el componente se
+  // detiene siempre, sin depender de que un handler concreto la pare.
+  useEffect(() => {
+    if (!isCameraModalOpen) {
+      stopCamera();
+    }
+  }, [isCameraModalOpen, stopCamera]);
+  useEffect(() => {
+    return () => stopCamera();
   }, [stopCamera]);
 
   return (

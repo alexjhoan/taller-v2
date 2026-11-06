@@ -1123,62 +1123,85 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
               return (
                 <div
                   key={part.id}
-                  className='flex items-start gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3.5'
+                  className='space-y-3 rounded-xl border border-slate-100 bg-slate-50 p-3.5'
                 >
-                  <div className='flex-1 min-w-0'>
-                    <p className='text-sm font-bold text-slate-800 truncate'>{part.name}</p>
-                    <p className='mt-0.5 text-xs font-medium text-slate-400'>
-                      Cant: {part.quantity}
-                      {part.unit_price != null && (
-                        <span className='ml-2 text-brand-600 font-semibold'>
-                          · {formatCOP(part.unit_price)} c/u · Total: {formatCOP(part.quantity * part.unit_price)}
-                        </span>
-                      )}
-                    </p>
-                    {part.notes && <p className='mt-2 text-xs italic text-slate-500'>&ldquo;{part.notes}&rdquo;</p>}
+                  {/* Fila 1: nombre + origen */}
+                  <div className='flex items-start justify-between gap-2'>
+                    <p className='min-w-0 flex-1 truncate text-sm font-bold text-slate-800'>{part.name}</p>
+                    {part.requestedByTechnician && (
+                      <CustomBadge variant='info' className='shrink-0'>
+                        Solicitud del técnico
+                      </CustomBadge>
+                    )}
                   </div>
-                  <div className='flex flex-wrap items-center justify-end gap-2'>
+
+                  {/* Fila 2: cantidades alineadas en columnas — nunca se parte
+                      un valor a mitad de línea (el fallo del diseño previo). */}
+                  <div className='grid grid-cols-3 gap-2 rounded-lg bg-white px-3 py-2.5'>
+                    <div>
+                      <p className='text-[10px] font-semibold uppercase tracking-wide text-slate-400'>Cant.</p>
+                      <p className='text-sm font-bold text-slate-800'>{part.quantity}</p>
+                    </div>
+                    <div>
+                      <p className='text-[10px] font-semibold uppercase tracking-wide text-slate-400'>Precio c/u</p>
+                      <p className='text-sm font-bold text-slate-800'>
+                        {part.unit_price != null ? formatCOP(part.unit_price) : '—'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className='text-[10px] font-semibold uppercase tracking-wide text-slate-400'>Total</p>
+                      <p className='text-sm font-bold text-brand-600'>
+                        {part.unit_price != null ? formatCOP(part.quantity * part.unit_price) : '—'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Fila 3: notas (solo si hay) */}
+                  {part.notes && (
+                    <p className='text-xs italic text-slate-500'>&ldquo;{part.notes}&rdquo;</p>
+                  )}
+
+                  {/* Fila 4: estado a la izquierda, acciones a la derecha */}
+                  <div className='flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2.5'>
                     {getPartStatusBadge(part.approvalStatus)}
-                    {/* RF-9 — Origen del repuesto: etiqueta junto al badge de
-                        estado solo cuando lo solicitó el técnico; los
-                        repuestos del admin/checkin no la muestran. */}
-                    {part.requestedByTechnician && <CustomBadge variant='info'>Solicitud del técnico</CustomBadge>}
-                    {canApprove && (
-                      <CustomButton
-                        type='button'
-                        size='sm'
-                        variant='secondary'
-                        leftIcon={<CheckCircle2 className='h-3.5 w-3.5' />}
-                        onClick={() => handleApprovePart(part)}
+                    <div className='flex items-center gap-2'>
+                      {canApprove && (
+                        <CustomButton
+                          type='button'
+                          size='sm'
+                          variant='secondary'
+                          leftIcon={<CheckCircle2 className='h-3.5 w-3.5' />}
+                          onClick={() => handleApprovePart(part)}
+                        >
+                          Aceptar
+                        </CustomButton>
+                      )}
+                      {canReject && (
+                        <CustomButton
+                          type='button'
+                          size='sm'
+                          variant='danger'
+                          leftIcon={<X className='h-3.5 w-3.5' />}
+                          onClick={() => handleRejectPart(part)}
+                        >
+                          Rechazar
+                        </CustomButton>
+                      )}
+                      <button
+                        onClick={() => handleEditPart(part)}
+                        className='rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-brand-50 hover:text-brand-600'
+                        title='Editar repuesto'
                       >
-                        Aceptar
-                      </CustomButton>
-                    )}
-                    {canReject && (
-                      <CustomButton
-                        type='button'
-                        size='sm'
-                        variant='danger'
-                        leftIcon={<X className='h-3.5 w-3.5' />}
-                        onClick={() => handleRejectPart(part)}
+                        <FileText className='h-4 w-4' />
+                      </button>
+                      <button
+                        onClick={() => handleDeletePart(part.id)}
+                        className='rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500'
+                        title='Eliminar repuesto'
                       >
-                        Rechazar
-                      </CustomButton>
-                    )}
-                    <button
-                      onClick={() => handleEditPart(part)}
-                      className='rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-brand-50 hover:text-brand-600'
-                      title='Editar repuesto'
-                    >
-                      <FileText className='h-4 w-4' />
-                    </button>
-                    <button
-                      onClick={() => handleDeletePart(part.id)}
-                      className='rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500'
-                      title='Eliminar repuesto'
-                    >
-                      <Trash2 className='h-4 w-4' />
-                    </button>
+                        <Trash2 className='h-4 w-4' />
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
