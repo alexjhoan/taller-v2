@@ -1,21 +1,25 @@
+import { useState } from 'react';
 import { useRouter } from 'next/router';
 import { withAuth } from '@/components/withAuth';
 import { Layout } from '@/components/Layout';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, Zap } from 'lucide-react';
 import { CustomBadge } from '@/components/ui/CustomBadge';
 import { CustomButton } from '@/components/ui/CustomButton';
+import { CustomDialog } from '@/components/ui/CustomDialog';
 import { NotificationTabs } from '@/components/NotificationTabs';
 import { AlertList } from '@/components/AlertList';
 import { useUnreadAlerts, useReadAlerts, useMarkAlertAsRead, useMarkAllAlertsAsRead, useMechanicUnreadAlerts } from '@/hooks/useAlerts';
 import { formatUnreadCount } from '@/utils/alerts';
 import { useUserContext } from '@/context/UserContext';
 import { PushNotificationsToggle } from '@/components/PushNotificationsToggle';
+import { PushNotificationsDebugger } from '@/components/PushNotificationsDebugger';
 
 export const dynamic = 'force-dynamic';
 
 function NotificationsPage() {
   const router = useRouter();
   const { user } = useUserContext();
+  const [debugOpen, setDebugOpen] = useState(false);
   const tab = (router.query.tab as 'unread' | 'read') ?? 'unread';
 
   const isAdmin = user?.role === 'admin';
@@ -84,13 +88,17 @@ function NotificationsPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {/* Debug Push: solo visible para administradores */}
+            {isAdmin && (
+              <CustomButton variant="secondary" size="sm" onClick={() => setDebugOpen(true)} leftIcon={<Zap className="h-4 w-4" />} className="whitespace-nowrap">Debug Push</CustomButton>
+            )}
             <CustomBadge variant="brand" className="text-sm">{formatUnreadCount(unreadCount + readCount)}</CustomBadge>
           </div>
         </div>
 
         <NotificationTabs activeTab={tab} onChange={(newTab) => router.push(`/notifications?tab=${newTab}`, undefined, { shallow: true })} unreadCount={unreadCount} readCount={readCount} />
 
-        {/* Toggle de notificaciones push */}
+        {/* Toggle de notificaciones push (encima del listado) */}
         <PushNotificationsToggle />
 
         <div id={tab === 'unread' ? 'panel-unread' : 'panel-read'} role="tabpanel" aria-labelledby={tab === 'unread' ? 'tab-unread' : 'tab-read'}>
@@ -125,6 +133,13 @@ function NotificationsPage() {
           />
         </div>
       </div>
+
+      {/* Modal de diagnóstico push */}
+      <CustomDialog open={debugOpen} onClose={() => setDebugOpen(false)} title="Debug Push Notifications" maxWidth="lg">
+        <div className="max-h-[70dvh] overflow-y-auto">
+          <PushNotificationsDebugger />
+        </div>
+      </CustomDialog>
     </Layout>
   );
 }

@@ -27,6 +27,14 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - **Audit trail**: `pages/admin/order-log.tsx` con timeline vertical, hook `useOrderAuditLog`, tipos en `src/types/audit.ts`. Botón "Ver Log de Cambios" en AdminOrderDetail.
 - `.env.local`: `NEXT_PUBLIC_API_BASE_URL=http://localhost`, `NEXT_PUBLIC_PORTAL_URL=http://localhost:3000`.
 - `npm run build` pasa. `npm run typecheck` pasa. `npm run lint` no (ESLint no configurado, preexistente).
+- **Spec 010 (push notificaciones) — E2E VERIFICADO en Chrome real (backend ya implementado, 200 en los 3 endpoints)**: fixes de esta sesión →
+  1. `isPushSupported()` usaba `'pushManager' in navigator.serviceWorker` (SIEMPRE false; `pushManager` vive en la REGISTRAción). Fix: `'PushManager' in window`.
+  2. "Ejecutar Todo" del debugger no hacía nada: closures obsoletos de `isRunning` + función duplicada `runAllSteps`. Fix: secuencia con `cancelRef` (useRef), para ante el primer error.
+  3. Pasos 4–6 del debugger usaban `localStorage.getItem('token')`/`userId` (nunca existen; el JWT vive SOLO en cookie) → `Bearer null` 401. Fix: cliente `api` (`pushPublicKey/pushSubscribe`) + `userRef.current?.id`.
+  4. **NADIE registraba el SW** en toda la app → `serviceWorker.ready` cuelga eterno. Fix: `ensureServiceWorkerRegistered()` en `pushUtils` (idempotente; si hay registro sin worker activo, re-registra para reemplazar el install encallado), llamado por el toggle y el debugger.
+  5. **`public/sw.js` es artefacto de build prod** (workbox precache de chunks con hashes viejos) → en dev su `install` cuelga (404 en precache). Fix: `public/sw-dev.js` minimalista (solo push + notificationclick) y `getServiceWorkerPath()` devuelve `/sw-dev.js` en dev, `/sw.js` en prod. NO fijar rutas de SW a mano.
+- Lección: si un chunk/código nuevo "no aparece" en el navegador de pruebas, es caché de chunks del dev server (refrescar duro o reiniciar dev limpiando `.next`).
+- Diseño de `/notifications`: toggle push entre tabs y listado; debugger vive en un modal (`CustomDialog`, maxWidth `lg`) que abre el botón "Debug Push" del header con estado fresco cada vez.
 
 ## Decisiones (y por qué)
 - Pages Router: requisito. Tipos autocontenidos por componente. Tailwind puro.

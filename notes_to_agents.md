@@ -7,3 +7,4 @@
 7. recuerda que soy el arquitecto y necesito entender la estructura
 8. que no edite lo que esta hecho, que solo edite lo que corresponda de lo que se le pidio
 9. verificar que el sub agente de tester este haciendo su trabajo
+10. pedir que siempre muestre errores en consola, para poder depurar

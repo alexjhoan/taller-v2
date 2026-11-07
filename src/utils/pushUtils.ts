@@ -18,7 +18,7 @@ export function isPushSupported(): boolean {
   return (
     'Notification' in window &&
     'serviceWorker' in navigator &&
-    'pushManager' in navigator.serviceWorker
+    'PushManager' in window
   );
 }
 
@@ -152,6 +152,41 @@ export function setPushOptOut(optedOut: boolean): void {
     // (o guardar 'true' si se prefiere mantener registro explícito de opt-in)
     localStorage.removeItem(PUSH_STORAGE_KEY);
   }
+}
+
+/**
+ * Ruta del Service Worker según el entorno:
+ * - desarrollo: '/sw-dev.js' (sin precache; el public/sw.js de prod queda
+ *   desincronizado con los chunks de dev y su install puede no terminar).
+ * - producción: '/sw.js' (generado por el build + handlers inyectados).
+ */
+export function getServiceWorkerPath(): string {
+  return (
+    typeof process !== 'undefined' &&
+    process.env.NODE_ENV === 'development'
+      ? '/sw-dev.js'
+      : '/sw.js'
+  );
+}
+
+/**
+ * Registra el Service Worker si aún no hay ninguno en el scope raíz.
+ * Idempotente: si ya existe un registro lo devuelve tal cual.
+ * Falla en SSR o si el navegador no soporta Service Workers.
+ */
+export async function ensureServiceWorkerRegistered(
+  swPath = getServiceWorkerPath(),
+): Promise<ServiceWorkerRegistration> {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+    throw new Error('Service Worker no soportado');
+  }
+  const existing = await navigator.serviceWorker.getRegistration();
+  // Un registro previo sin worker activo (install encallado) no sirve:
+  // registrar la ruta deseada en el mismo scope reemplaza esa instalación.
+  if (existing?.active) return existing;
+  const reg = navigator.serviceWorker.register(swPath);
+  await navigator.serviceWorker.ready; // espera hasta worker activo
+  return reg;
 }
 
 /**
