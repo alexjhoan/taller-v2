@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSnackbar } from 'notistack';
-import { Bell, BellOff } from 'lucide-react';
+import { Bell, BellOff, AlertCircle, Info } from 'lucide-react';
 import { CustomSwitch } from '@/components/ui/CustomSwitch';
 import {
   isPushSupported,
@@ -23,16 +23,25 @@ export function PushNotificationsToggle() {
   const [isSubscribing, setIsSubscribing] = useState(false);
   const [isUnsubscribing, setIsUnsubscribing] = useState(false);
   const [swReady, setSwReady] = useState(false);
+  const [supportError, setSupportError] = useState<string | null>(null);
+  const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const supported = isPushSupported();
     console.log('[PushNotificationsToggle] isPushSupported:', supported);
+    if (!supported) {
+      setSupportError('Push API no soportada en este navegador. Use Chrome/Edge/Firefox real (no headless/incognito).');
+    } else {
+      setSupportError(null);
+    }
     setIsSupported(supported);
     if (supported) {
       const show = shouldShowToggle();
       console.log('[PushNotificationsToggle] shouldShowToggle:', show);
       setShowToggle(show);
+    } else {
+      setShowToggle(true); // Siempre mostrar para debug
     }
   }, []);
 
@@ -46,7 +55,11 @@ export function PushNotificationsToggle() {
 
   const handleToggleChange = async (checked: boolean) => {
     console.log('[PushNotificationsToggle] toggle changed:', checked);
-    if (!swReady) return;
+    setSubscriptionError(null);
+    if (!swReady) {
+      enqueueSnackbar('Service Worker no listo aún', { variant: 'warning' });
+      return;
+    }
 
     if (checked) {
       await subscribe();
@@ -58,6 +71,7 @@ export function PushNotificationsToggle() {
   const subscribe = async () => {
     if (isSubscribing) return;
     setIsSubscribing(true);
+    setSubscriptionError(null);
 
     try {
       const permission = Notification.permission;
@@ -79,27 +93,41 @@ export function PushNotificationsToggle() {
       }
 
       // Obtener clave VAPID pública
+      console.log('[PushNotificationsToggle] Obteniendo clave VAPID...');
       const { public_key } = await api.pushPublicKey();
+      console.log('[PushNotificationsToggle] Clave VAPID recibida:', public_key ? 'OK' : 'VACÍA');
+      if (!public_key) {
+        throw new Error('Clave VAPID pública vacía');
+      }
       const applicationServerKey = urlBase64ToUint8Array(public_key);
 
       const reg = await navigator.serviceWorker.ready;
       const subscription = await reg.pushManager.subscribe(
         makeSubscribeOptions(applicationServerKey)
       );
+      console.log('[PushNotificationsToggle] Suscripción creada:', subscription.endpoint);
 
       const payload = serializeSubscription(subscription);
+      console.log('[PushNotificationsToggle] Enviando suscripción al backend...');
       await api.pushSubscribe(payload);
 
       setPushOptOut(false);
       enqueueSnackbar('Notificaciones activadas', { variant: 'success' });
     } catch (error) {
       console.error('[PushNotificationsToggle] Error suscribiendo:', error);
-      const apiError = error as { status?: number; statusText?: string; body?: { statusText?: string } };
+      const apiError = error as { status?: number; statusText?: string; body?: { statusText?: string }; message?: string };
+      let errorMsg = 'Error al activar notificaciones.';
       if (apiError?.status === 503 || apiError?.statusText === 'OfflineMode') {
-        enqueueSnackbar('Sin conexión. Se reintentará al activar de nuevo.', { variant: 'warning' });
-      } else {
-        enqueueSnackbar('Error al activar notificaciones.', { variant: 'error' });
+        errorMsg = 'Sin conexión. Se reintentará al activar de nuevo.';
+      } else if (apiError?.status === 401) {
+        errorMsg = 'Sesión expirada. Inicie sesión nuevamente.';
+      } else if (apiError?.status === 403) {
+        errorMsg = 'No tiene permisos para suscribirse.';
+      } else if (apiError?.message) {
+        errorMsg = apiError.message;
       }
+      setSubscriptionError(errorMsg);
+      enqueueSnackbar(errorMsg, { variant: 'error' });
     } finally {
       setIsSubscribing(false);
     }
@@ -108,6 +136,7 @@ export function PushNotificationsToggle() {
   const unsubscribe = async () => {
     if (isUnsubscribing) return;
     setIsUnsubscribing(true);
+    setSubscriptionError(null);
 
     try {
       const subscription = await getExistingSubscription();
@@ -124,13 +153,12 @@ export function PushNotificationsToggle() {
     } catch (error) {
       console.error('[PushNotificationsToggle] Error desuscribiendo:', error);
       const apiError = error as { status?: number; statusText?: string; body?: { statusText?: string } };
+      let errorMsg = 'Error al desactivar notificaciones.';
       if (apiError?.status === 503 || apiError?.statusText === 'OfflineMode') {
-        enqueueSnackbar('Sin conexión. Se reintentará al desactivar de nuevo.', { variant: 'warning' });
-        // Rollback UI
-        return;
-      } else {
-        enqueueSnackbar('Error al desactivar notificaciones.', { variant: 'error' });
+        errorMsg = 'Sin conexión. Se reintentará al desactivar de nuevo.';
       }
+      setSubscriptionError(errorMsg);
+      enqueueSnackbar(errorMsg, { variant: 'error' });
     } finally {
       setIsUnsubscribing(false);
     }
@@ -144,9 +172,18 @@ export function PushNotificationsToggle() {
     return Notification.permission === 'granted';
   };
 
-  // Si no hay soporte para Push, no mostrar nada
+  // Mostrar siempre el toggle para debug, pero con indicadores de estado
   if (!isSupported) {
-    return null;
+    return (
+      <div className="flex items-center gap-3 p-4 border rounded-xl bg-red-50 border-red-200">
+        <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-red-800">Push API no soportada</p>
+          <p className="text-xs text-red-600 mt-1">{supportError}</p>
+          <p className="text-xs text-slate-500 mt-1">Use Chrome, Edge o Firefox real. Evite modo incognito o headless.</p>
+        </div>
+      </div>
+    );
   }
 
   // Mientras se determina si se debe mostrar (SSR), mostrar un placeholder
@@ -191,6 +228,12 @@ export function PushNotificationsToggle() {
           label={checked ? 'Activadas' : 'Desactivadas'}
         />
         {isLoading && <span className="ml-2 text-xs text-slate-500">Actualizando...</span>}
+        {subscriptionError && (
+          <div className="mt-2 ml-14">
+            <Info className="h-4 w-4 text-red-500 inline-block mr-1" />
+            <span className="text-xs text-red-600">{subscriptionError}</span>
+          </div>
+        )}
       </div>
     </div>
   );
