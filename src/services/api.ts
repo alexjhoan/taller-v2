@@ -160,8 +160,9 @@ export const api = {
   upload: <T>(endpoint: string, formData: FormData) =>
     apiRequest<T>(endpoint, { method: 'POST', body: formData, isMultipart: true }),
 
-  // Push notifications
-  pushPublicKey: () => apiRequest<{ public_key: string }>(endpoints.pushPublicKey, { method: 'GET' }),
+  // Push notifications (el backend responde con el envoltorio { status, body, statusText })
+  pushPublicKey: () =>
+    apiRequest<{ status: number; body: { public_key: string }; statusText: string }>(endpoints.pushPublicKey, { method: 'GET' }),
   pushSubscribe: (payload: { endpoint: string; keys: { p256dh: string; auth: string }; user_agent?: string }) =>
     apiRequest<void>(endpoints.pushSubscribe, { method: 'POST', body: payload }),
   pushUnsubscribe: (endpoint: string) =>

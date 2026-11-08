@@ -34,6 +34,7 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
   4. **NADIE registraba el SW** en toda la app → `serviceWorker.ready` cuelga eterno. Fix: `ensureServiceWorkerRegistered()` en `pushUtils` (idempotente; si hay registro sin worker activo, re-registra para reemplazar el install encallado), llamado por el toggle y el debugger.
   5. **`public/sw.js` es artefacto de build prod** (workbox precache de chunks con hashes viejos) → en dev su `install` cuelga (404 en precache). Fix: `public/sw-dev.js` minimalista (solo push + notificationclick) y `getServiceWorkerPath()` devuelve `/sw-dev.js` en dev, `/sw.js` en prod. NO fijar rutas de SW a mano.
 - Lección: si un chunk/código nuevo "no aparece" en el navegador de pruebas, es caché de chunks del dev server (refrescar duro o reiniciar dev limpiando `.next`).
+- **Contrato de envoltorio del backend**: toda respuesta es `{ status, body, statusText }` — al tipar métodos de `api.ts`, el genérico DEBE describir el envoltorio, no el payload interior (bug real: `pushPublicKey` tipado `{ public_key }` en raíz → `undefined` en runtime → "Clave VAPID pública vacía" aunque el backend respondía 200 con la clave en `body`). Leer siempre `response.body?.campo`.
 - Diseño de `/notifications`: toggle push entre tabs y listado; debugger vive en un modal (`CustomDialog`, maxWidth `lg`) que abre el botón "Debug Push" del header con estado fresco cada vez.
 
 ## Decisiones (y por qué)

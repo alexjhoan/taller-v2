@@ -100,12 +100,14 @@ export function PushNotificationsToggle() {
 
       // Obtener clave VAPID pública
       console.log("[PushNotificationsToggle] Obteniendo clave VAPID...");
-      const { public_key } = await api.pushPublicKey();
-      console.log("[PushNotificationsToggle] Clave VAPID recibida:", public_key ? "OK" : "VACÍA");
-      if (!public_key) {
+      // El backend responde con el envoltorio { status, body: { public_key }, statusText }
+      const response = await api.pushPublicKey();
+      const publicKey = response.body?.public_key;
+      console.log("[PushNotificationsToggle] Clave VAPID recibida:", publicKey ? "OK" : "VACÍA");
+      if (!publicKey) {
         throw new Error("Clave VAPID pública vacía");
       }
-      const applicationServerKey = urlBase64ToUint8Array(public_key);
+      const applicationServerKey = urlBase64ToUint8Array(publicKey);
 
       const reg = await navigator.serviceWorker.ready;
       const subscription = await reg.pushManager.subscribe(makeSubscribeOptions(applicationServerKey));
