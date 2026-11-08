@@ -19,7 +19,11 @@ self.addEventListener('push', (event) => {
   try {
     const data = event.data.json();
     const { title, body, order_id } = data;
-    const tag = 'order-' + order_id;
+    // order_id=0 => push de prueba: tag único para que cada push se muestre
+    // como notificación NUEVA (con tag repetido Chrome reemplaza en silencio
+    // y parece que "no llega"). requireInteraction solo para órdenes reales.
+    const esPrueba = !order_id;
+    const tag = esPrueba ? 'test-' + Date.now() : 'order-' + order_id;
     const url = order_id ? '/admin/dashboard?selectedOrderId=' + order_id : undefined;
     event.waitUntil(
       self.registration.showNotification(title, {
@@ -27,7 +31,7 @@ self.addEventListener('push', (event) => {
         icon: '/icons/icon-192x192.png',
         badge: '/icons/icon-72x72.png',
         data: url ? { url } : undefined,
-        requireInteraction: true,
+        requireInteraction: !esPrueba,
         tag,
       })
     );
