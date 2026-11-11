@@ -93,6 +93,13 @@ interface ChecklistItem {
 type ContactChannel = "whatsapp" | "email";
 
 /**
+ * Estados terminales de la orden: una vez entregada o cancelada, la orden
+ * queda BLOQUEADA — no se editan campos, repuestos, servicios, checklist,
+ * evidencias ni se cambia el estado (aviso en DeliveryCommentModal).
+ */
+const LOCKED_STATUSES = ["delivered", "cancelled"];
+
+/**
  * Formatea un error del guardado automático del checklist en texto legible:
  * `[ApiError 500] detalle` para errores de API o `[Tipo] mensaje` para el resto.
  */
@@ -193,6 +200,10 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
       price: number;
     }>
   >([]);
+
+  // Orden bloqueada: entregada o cancelada → todo el detalle es read-only.
+  const isLocked = !!formData && LOCKED_STATUSES.includes(formData.status);
+  const lockedLabel = formData?.status === "delivered" ? "entregada" : "cancelada";
 
   useEffect(() => {
     const data: OrderFormData = {
@@ -359,7 +370,7 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
   };
 
   const handleSave = async () => {
-    if (!formData) return;
+    if (!formData || isLocked) return;
 
     setIsSaving(true);
 
@@ -423,6 +434,7 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
    * El error ya lo muestra globalmente apiClient (`[ApiError STATUS] detalle`).
    */
   const persistParts = async (previousParts: PartItem[], updatedParts: PartItem[]) => {
+    if (isLocked) return; // orden entregada/cancelada: repuestos read-only
     setParts(updatedParts); // optimista
     try {
       await apiClient.patch(
@@ -586,7 +598,7 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
   // --- Checklist handlers ---
 
   const handleAddCheckItem = async () => {
-    if (!newCheckItem.title.trim()) return;
+    if (isLocked || !newCheckItem.title.trim()) return;
 
     const newItem: ChecklistItem = {
       id: generateShortUid(),
@@ -614,7 +626,7 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
   };
 
   const handleUpdateCheckItem = async () => {
-    if (!editingCheckItem || !newCheckItem.title.trim()) return;
+    if (isLocked || !editingCheckItem || !newCheckItem.title.trim()) return;
 
     const updatedChecklist = checklist.map((item) =>
       item.id === editingCheckItem.id
@@ -637,6 +649,7 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
   // Guardado automático: el toggle persiste el checklist completo en el
   // backend (PATCH optimista con rollback y modal de error si falla).
   const toggleCheckItem = async (itemId: string) => {
+    if (isLocked) return; // orden bloqueada: checklist read-only
     const updatedChecklist = checklist.map((item) =>
       item.id === itemId ? { ...item, completed: !item.completed } : item,
     );
@@ -655,12 +668,13 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
   };
 
   const handleDeleteCheckItem = (itemId: string) => {
+    if (isLocked) return;
     setChecklist(checklist.filter((item) => item.id !== itemId));
   };
 
   // Handler para guardar notas del checklist item
   const handleSaveCheckItemNotes = async () => {
-    if (!editingCheckItemNotes) return;
+    if (isLocked || !editingCheckItemNotes) return;
     const updatedChecklist = checklist.map((item) =>
       item.id === editingCheckItemNotes.id ? { ...item, notes: checkItemNotes.trim() || undefined } : item,
     );
@@ -790,17 +804,19 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
           <p className='text-sm text-slate-500'>Creada: {new Date(order.created_at).toLocaleDateString("es-CO")}</p>
         </div>
         {/* Estado: SIEMPRE editable con PATCH inmediato (no depende del modo edición).
-            Badge clickeable con lápiz que abre el modal de opciones. */}
+            Badge clickeable con lápiz que abre el modal de opciones.
+            Bloqueado si la orden está entregada/cancelada. */}
         <div className='order-2 flex w-full min-w-0 items-center justify-end gap-2 wide:order-none wide:ml-auto wide:w-auto'>
           <OrderStatusButton
             orderId={order.id}
             currentStatus={formData.status}
             onStatusChange={handleStatusChange}
             onStatusWithComment={openCommentModal}
+            disabled={isLocked}
           />
         </div>
         <div className='order-3 flex w-full items-center justify-start gap-2 wide:order-none wide:w-auto'>
-          {!isEditing ? (
+          {isLocked ? null : !isEditing ? (
             <CustomButton
               variant='secondary'
               size='sm'
@@ -835,8 +851,8 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
         </div>
       </div>
 
-      {/* Botón "Cerrar orden" — solo visible si la orden no está entregada ni cancelada */}
-      {formData && !["delivered", "cancelled"].includes(formData.status) && (
+      {/* Botón "Cerrar orden" — oculto si la orden está bloqueada (entregada/cancelada) */}
+      {formData && !isLocked && (
         <CustomButton
           size="sm"
           leftIcon={<Lock className="h-4 w-4" />}
@@ -845,6 +861,16 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
         >
           Cerrar orden
         </CustomButton>
+      )}
+
+      {/* Aviso: orden entregada/cancelada → todo el detalle es read-only */}
+      {isLocked && (
+        <div className='flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800'>
+          <Lock className='h-4 w-4 shrink-0' />
+          <span>
+            Esta orden está <strong className='font-bold'>{lockedLabel}</strong> y no puede editarse.
+          </span>
+        </div>
       )}
 
       {/* Datos del Vehículo */}
@@ -871,7 +897,7 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
               label='Placa'
               value={formData.vehicle_plate}
               onChange={(e) => handleChange("vehicle_plate", e.target.value)}
-              disabled={!isEditing}
+              disabled={!isEditing || isLocked}
             />
           </div>
         )}
@@ -881,33 +907,33 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
               label='Marca'
               value={formData.vehicle_make}
               onChange={(e) => handleChange("vehicle_make", e.target.value)}
-              disabled={!isEditing}
+              disabled={!isEditing || isLocked}
             />
             <CustomInput
               label='Modelo'
               value={formData.vehicle_model}
               onChange={(e) => handleChange("vehicle_model", e.target.value)}
-              disabled={!isEditing}
+              disabled={!isEditing || isLocked}
             />
             <CustomInput
               label='Año'
               type='number'
               value={formData.vehicle_year}
               onChange={(e) => handleChange("vehicle_year", e.target.value)}
-              disabled={!isEditing}
+              disabled={!isEditing || isLocked}
             />
             <CustomInput
               label='Color'
               value={formData.vehicle_color}
               onChange={(e) => handleChange("vehicle_color", e.target.value)}
-              disabled={!isEditing}
+              disabled={!isEditing || isLocked}
             />
             <CustomInput
               label='Odómetro (km)'
               type='number'
               value={formData.mileage}
               onChange={(e) => handleChange("mileage", e.target.value)}
-              disabled={!isEditing}
+              disabled={!isEditing || isLocked}
             />
             <div>
               <label className='mb-1.5 block text-sm font-semibold text-slate-700'>Combustible</label>
@@ -915,7 +941,7 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
                 value={formData.fuel_level}
                 onChange={(e) => handleChange("fuel_level", e.target.value)}
                 className='input-field'
-                disabled={!isEditing}
+                disabled={!isEditing || isLocked}
               >
                 <option value='E'>Vacío (E)</option>
                 <option value='1/4'>1/4</option>
@@ -935,7 +961,7 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
               rows={3}
               className='input-field resize-none'
               placeholder='Color, accesorios, daños visibles, características especiales...'
-              disabled={!isEditing}
+              disabled={!isEditing || isLocked}
             />
           </div>
         )}
@@ -965,20 +991,20 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
               label='Nombre'
               value={formData.customer_name}
               onChange={(e) => handleChange("customer_name", e.target.value)}
-              disabled={!isEditing}
+              disabled={!isEditing || isLocked}
             />
             <CustomInput
               label='Teléfono'
               value={formData.customer_phone}
               onChange={(e) => handleChange("customer_phone", e.target.value)}
-              disabled={!isEditing}
+              disabled={!isEditing || isLocked}
             />
             <CustomInput
               label='Email'
               type='email'
               value={formData.customer_email}
               onChange={(e) => handleChange("customer_email", e.target.value)}
-              disabled={!isEditing}
+              disabled={!isEditing || isLocked}
             />
           </div>
         )}
@@ -1000,6 +1026,7 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
               onChange={(e) => handleChange("failure_description", e.target.value)}
               rows={3}
               className='input-field resize-none'
+              disabled={!isEditing || isLocked}
             />
           </div>
           <div>
@@ -1021,12 +1048,15 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
                     return (
                       <label
                         key={userId}
-                        className='flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 hover:border-brand-300'
+                        className={`flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 ${
+                          isLocked ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:border-brand-300"
+                        }`}
                       >
                         <input
                           type='checkbox'
                           checked={formData.assigned_user_id.includes(userId)}
                           onChange={() => toggleAssignedUser(userId)}
+                          disabled={isLocked}
                           className='h-4 w-4 rounded border-slate-300'
                         />
                         <span className='text-sm text-slate-700'>
@@ -1072,6 +1102,7 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
               size='sm'
               leftIcon={<Plus className='h-3.5 w-3.5' />}
               onClick={() => setServiceItems([...serviceItems, { id: generateShortUid(), description: "", price: 0 }])}
+              disabled={isLocked}
             >
               Agregar servicio
             </CustomButton>
@@ -1095,6 +1126,7 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
                         setServiceItems(updated);
                       }}
                       placeholder='Ej: Cambio de aceite y filtro'
+                      disabled={isLocked}
                     />
                   </div>
                   {/* Monto individual al FINAL de la fila (derecha) */}
@@ -1111,29 +1143,34 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
                       isCurrency={true}
                       allowDecimal={true}
                       min={0}
+                      disabled={isLocked}
                     />
-                    <CustomButton
-                      variant='ghost'
-                      size='sm'
-                      onClick={() => setServiceItems(serviceItems.filter((_, i) => i !== index))}
-                      className='pt-8 text-red-500 hover:bg-red-50'
-                    >
-                      <Trash2 className='h-4 w-4' />
-                    </CustomButton>
+                    {!isLocked && (
+                      <CustomButton
+                        variant='ghost'
+                        size='sm'
+                        onClick={() => setServiceItems(serviceItems.filter((_, i) => i !== index))}
+                        className='pt-8 text-red-500 hover:bg-red-50'
+                      >
+                        <Trash2 className='h-4 w-4' />
+                      </CustomButton>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
             <div className='flex items-center justify-end gap-4 pt-4 border-t border-slate-100'>
-              <CustomButton
-                size='sm'
-                leftIcon={<Plus className='h-3.5 w-3.5' />}
-                onClick={() =>
-                  setServiceItems([...serviceItems, { id: generateShortUid(), description: "", price: 0 }])
-                }
-              >
-                Agregar servicio
-              </CustomButton>
+              {!isLocked && (
+                <CustomButton
+                  size='sm'
+                  leftIcon={<Plus className='h-3.5 w-3.5' />}
+                  onClick={() =>
+                    setServiceItems([...serviceItems, { id: generateShortUid(), description: "", price: 0 }])
+                  }
+                >
+                  Agregar servicio
+                </CustomButton>
+              )}
               <div className='text-right'>
                 <p className='text-xs font-medium text-slate-400'>Total mano de obra</p>
                 <p className='text-xl font-extrabold text-brand-600'>
@@ -1154,18 +1191,20 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
             </div>
             <h2 className='text-sm font-bold text-slate-800'>Repuestos Solicitados</h2>
           </div>
-          <CustomButton
-            type='button'
-            size='sm'
-            leftIcon={<Plus className='h-3 w-3' />}
-            onClick={() => {
-              setEditingPart(null);
-              setNewPart({ name: "", quantity: 1, notes: "", unit_price: 0 });
-              setIsPartModalOpen(true);
-            }}
-          >
-            Agregar
-          </CustomButton>
+          {!isLocked && (
+            <CustomButton
+              type='button'
+              size='sm'
+              leftIcon={<Plus className='h-3 w-3' />}
+              onClick={() => {
+                setEditingPart(null);
+                setNewPart({ name: "", quantity: 1, notes: "", unit_price: 0 });
+                setIsPartModalOpen(true);
+              }}
+            >
+              Agregar
+            </CustomButton>
+          )}
         </div>
 
         <div className='space-y-3'>
@@ -1220,9 +1259,10 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
                     <p className='text-xs italic text-slate-500'>&ldquo;{part.notes}&rdquo;</p>
                   )}
 
-                  {/* Fila 4: estado a la izquierda, acciones a la derecha */}
+                  {/* Fila 4: estado a la izquierda, acciones a la derecha (bloqueadas si la orden cerró) */}
                   <div className='flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2.5'>
                     {getPartStatusBadge(part.approvalStatus)}
+                    {!isLocked && (
                     <div className='flex items-center gap-2'>
                       {canApprove && (
                         <CustomButton
@@ -1261,6 +1301,7 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
                         <Trash2 className='h-4 w-4' />
                       </button>
                     </div>
+                    )}
                   </div>
                 </div>
               );
@@ -1283,18 +1324,20 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
             </div>
             <h2 className='text-sm font-bold text-slate-800'>Checklist de Trabajos</h2>
           </div>
-          <CustomButton
-            type='button'
-            size='sm'
-            leftIcon={<Plus className='h-3 w-3' />}
-            onClick={() => {
-              setEditingCheckItem(null);
-              setNewCheckItem({ title: "", category: "DIAGNOSTICO", priority: "MEDIA", notes: "" });
-              setIsChecklistModalOpen(true);
-            }}
-          >
-            Agregar
-          </CustomButton>
+          {!isLocked && (
+            <CustomButton
+              type='button'
+              size='sm'
+              leftIcon={<Plus className='h-3 w-3' />}
+              onClick={() => {
+                setEditingCheckItem(null);
+                setNewCheckItem({ title: "", category: "DIAGNOSTICO", priority: "MEDIA", notes: "" });
+                setIsChecklistModalOpen(true);
+              }}
+            >
+              Agregar
+            </CustomButton>
+          )}
         </div>
 
         <div className='space-y-2'>
@@ -1310,7 +1353,10 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
               >
                 <button
                   onClick={() => toggleCheckItem(item.id)}
+                  disabled={isLocked}
                   className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 transition-all ${
+                    isLocked ? "cursor-not-allowed opacity-70" : ""
+                  } ${
                     item.completed
                       ? "border-emerald-500 bg-emerald-500 text-white"
                       : "border-slate-300 bg-white hover:border-slate-400"
@@ -1350,35 +1396,41 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
                       {item.notes}
                     </div>
                   )}
-                  {/* Botón para editar notas del item del checklist */}
-                  <button
-                    type='button'
-                    onClick={() => {
-                      setEditingCheckItemNotes(item);
-                      setCheckItemNotes(item.notes || "");
-                      setIsCheckItemNotesModalOpen(true);
-                    }}
-                    className='mt-2 flex items-center gap-1.5 text-xs text-slate-500 hover:text-brand-600 transition-colors'
-                    title={item.notes ? "Ver/editar notas" : "Agregar notas"}
-                  >
-                    <MessageSquare className='h-3.5 w-3.5' />
-                    <span>{item.notes ? "Editar Nota" : "Agregar notas"}</span>
-                  </button>
+                  {/* Botón para editar notas del item del checklist (oculto si la orden cerró) */}
+                  {!isLocked && (
+                    <button
+                      type='button'
+                      onClick={() => {
+                        setEditingCheckItemNotes(item);
+                        setCheckItemNotes(item.notes || "");
+                        setIsCheckItemNotesModalOpen(true);
+                      }}
+                      className='mt-2 flex items-center gap-1.5 text-xs text-slate-500 hover:text-brand-600 transition-colors'
+                      title={item.notes ? "Ver/editar notas" : "Agregar notas"}
+                    >
+                      <MessageSquare className='h-3.5 w-3.5' />
+                      <span>{item.notes ? "Editar Nota" : "Agregar notas"}</span>
+                    </button>
+                  )}
                 </div>
-                <button
-                  onClick={() => handleEditCheckItem(item)}
-                  className='rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-brand-50 hover:text-brand-600'
-                  title='Editar item'
-                >
-                  <FileText className='h-4 w-4' />
-                </button>
-                <button
-                  onClick={() => handleDeleteCheckItem(item.id)}
-                  className='rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500'
-                  title='Eliminar item'
-                >
-                  <Trash2 className='h-4 w-4' />
-                </button>
+                {!isLocked && (
+                  <button
+                    onClick={() => handleEditCheckItem(item)}
+                    className='rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-brand-50 hover:text-brand-600'
+                    title='Editar item'
+                  >
+                    <FileText className='h-4 w-4' />
+                  </button>
+                )}
+                {!isLocked && (
+                  <button
+                    onClick={() => handleDeleteCheckItem(item.id)}
+                    className='rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500'
+                    title='Eliminar item'
+                  >
+                    <Trash2 className='h-4 w-4' />
+                  </button>
+                )}
               </div>
             ))
           )}
@@ -1398,7 +1450,8 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
         </CustomCard>
       )}
 
-      <EvidenceUploader orderId={order.id} allowedTypes={['work_progress', 'final']} />
+      {/* Cargar Evidencias (no se suben más a una orden entregada/cancelada) */}
+      {!isLocked && <EvidenceUploader orderId={order.id} allowedTypes={['work_progress', 'final']} />}
 
       {/* Comentario de entrega/cancelación (solo si la orden ya lo tiene) */}
       {withdrawalComment && withdrawalComment.trim() !== "" && (
@@ -1435,25 +1488,27 @@ export function AdminOrderDetail({ order, onBack }: AdminOrderDetailProps) {
         </CustomButton>
       </div>
 
-      {/* Botones de acción */}
-      <div className='flex gap-3'>
-        <CustomButton
-          variant='secondary'
-          className='flex-1'
-          leftIcon={<X className='h-4 w-4' />}
-          onClick={handleCancel}
-        >
-          Cancelar
-        </CustomButton>
-        <CustomButton
-          className='flex-1'
-          leftIcon={<Save className='h-4 w-4' />}
-          onClick={handleSave}
-          isLoading={isSaving}
-        >
-          Guardar Cambios
-        </CustomButton>
-      </div>
+      {/* Botones de acción (ocultos cuando la orden está bloqueada) */}
+      {!isLocked && (
+        <div className='flex gap-3'>
+          <CustomButton
+            variant='secondary'
+            className='flex-1'
+            leftIcon={<X className='h-4 w-4' />}
+            onClick={handleCancel}
+          >
+            Cancelar
+          </CustomButton>
+          <CustomButton
+            className='flex-1'
+            leftIcon={<Save className='h-4 w-4' />}
+            onClick={handleSave}
+            isLoading={isSaving}
+          >
+            Guardar Cambios
+          </CustomButton>
+        </div>
+      )}
 
       {/* Ver historial de cambios */}
       <CustomButton

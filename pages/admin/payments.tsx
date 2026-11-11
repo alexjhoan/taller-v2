@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/router";
 import { useSnackbar } from "notistack";
-import { ArrowLeft, Filter, X, ChevronDown, ChevronUp, DollarSign, Calendar, Download, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { ArrowLeft, Filter, X, ChevronDown, ChevronUp, DollarSign, Download, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { CustomCard } from "@/components/ui/CustomCard";
 import { CustomButton } from "@/components/ui/CustomButton";
-import { CustomBadge } from "@/components/ui/CustomBadge";
 import { CustomInput } from "@/components/ui/CustomInput";
 import { CustomSelect } from "@/components/ui/CustomSelect";
 import { api } from "@/services/api";
@@ -16,40 +15,42 @@ interface AdminPaymentsPageProps {}
 
 type DateRangePreset = "today" | "week" | "month" | "custom";
 
+/** El backend devuelve { status, body: [...], statusText, total } (body es el array). */
+interface PaymentRow {
+  id: number;
+  order_id: number;
+  labor_amount: number;
+  parts_amount: number;
+  total_amount: number;
+  created_at?: string;
+  paid_at?: string;
+  order?: { customer_name?: string; vehicle_plate?: string };
+}
+
 function AdminPaymentsPage() {
   const router = useRouter();
   const { enqueueSnackbar } = useSnackbar();
   const [isLoading, setIsLoading] = useState(false);
-  const [payments, setPayments] = useState<any[]>([]);
+  const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [pagination, setPagination] = useState({ current_page: 1, per_page: 20, total: 0, last_page: 1 });
 
-  // Stats
-  const [stats, setStats] = useState<{
-    total_labor: number;
-    total_parts: number;
-    total_revenue: number;
-    total_payments: number;
-    by_method: Record<string, { amount: number; count: number }>;
-  }>({
+  // Totales: se calculan desde la lista cargada (el endpoint de lista ya trae
+  // la información). Solo se consulta /payments/stats cuando el usuario aplica
+  // un filtro, para obtener los totales reales del rango filtrado.
+  const [stats, setStats] = useState({
     total_labor: 0,
     total_parts: 0,
     total_revenue: 0,
     total_payments: 0,
-    by_method: {
-      cash: { amount: 0, count: 0 },
-      card: { amount: 0, count: 0 },
-      transfer: { amount: 0, count: 0 },
-      other: { amount: 0, count: 0 },
-    },
   });
 
-  // Filtros
-  const [filters, setFilters] = useState({
+  // Filtros: `draft` es lo que el usuario edita; `applied` es lo que se consulta.
+  const [draft, setDraft] = useState({
     preset: "month" as DateRangePreset,
     date_from: "",
     date_to: "",
-    method: "",
   });
+  const [applied, setApplied] = useState({ date_from: "", date_to: "" });
   const [showFilters, setShowFilters] = useState(false);
 
   // Helper: calcular fechas según preset
@@ -76,101 +77,135 @@ function AdminPaymentsPage() {
     return { from: from.toISOString().split("T")[0], to };
   };
 
-  // Al cambiar preset, actualizar date_from/date_to
+  // Al cambiar preset, actualizar las fechas del borrador
   useEffect(() => {
-    if (filters.preset !== "custom") {
-      const { from, to } = computeDatesFromPreset(filters.preset);
-      setFilters((prev) => ({ ...prev, date_from: from, date_to: to }));
+    if (draft.preset !== "custom") {
+      const { from, to } = computeDatesFromPreset(draft.preset);
+      setDraft((prev) => ({ ...prev, date_from: from, date_to: to }));
     }
-  }, [filters.preset]);
+  }, [draft.preset]);
+
+  // Totales calculados desde los pagos de la página actual
+  const computeStatsFromList = useCallback((list: PaymentRow[]) => {
+    const total_labor = list.reduce((sum, p) => sum + (Number(p.labor_amount) || 0), 0);
+    const total_parts = list.reduce((sum, p) => sum + (Number(p.parts_amount) || 0), 0);
+    setStats({
+      total_labor,
+      total_parts,
+      total_revenue: total_labor + total_parts,
+      total_payments: list.length,
+    });
+  }, []);
 
   const fetchPayments = useCallback(async () => {
     setIsLoading(true);
     try {
-      const params = {
+      const response = await api.getPayments({
         page: pagination.current_page,
         per_page: pagination.per_page,
-        date_from: filters.date_from || undefined,
-        date_to: filters.date_to || undefined,
-        method: filters.method || undefined,
-      };
-      const response = await api.getPayments(params);
-      if (response.body?.data) {
-        setPayments(response.body.data);
-        setPagination((prev) => ({ ...prev, ...response.body.pagination }));
-      }
+        date_from: applied.date_from || undefined,
+        date_to: applied.date_to || undefined,
+      });
+      // El backend devuelve body como array directo (con total fuera de body)
+      const raw: any = response;
+      const list: PaymentRow[] = Array.isArray(raw?.body)
+        ? raw.body
+        : Array.isArray(raw?.body?.data)
+          ? raw.body.data
+          : [];
+      const total = Number(raw?.total ?? raw?.body?.total ?? list.length);
+      const perPage = pagination.per_page;
+
+      setPayments(list);
+      setPagination((prev) => ({
+        ...prev,
+        total,
+        last_page: Math.max(1, Math.ceil(total / perPage)),
+      }));
+      computeStatsFromList(list);
     } catch (error: any) {
       const detail = error?.body?.statusText || error?.message || "Error al cargar pagos";
       enqueueSnackbar(detail, { variant: "error" });
     } finally {
       setIsLoading(false);
     }
-  }, [pagination.current_page, pagination.per_page, filters.date_from, filters.date_to, filters.method]);
+  }, [pagination.current_page, pagination.per_page, applied.date_from, applied.date_to, computeStatsFromList]);
 
-  const fetchStats = useCallback(async () => {
+  // Stats solo se consultan cuando hay un filtro aplicado (rango de fechas)
+  const fetchStats = useCallback(async (from?: string, to?: string) => {
+    const dateFrom = from ?? applied.date_from;
+    const dateTo = to ?? applied.date_to;
+    if (!dateFrom && !dateTo) return;
     try {
-      const params = {
-        date_from: filters.date_from || undefined,
-        date_to: filters.date_to || undefined,
-      };
-      const response = await api.getPaymentStats(params);
-      if (response.body) {
-        setStats(response.body);
+      const response = await api.getPaymentStats({
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
+      });
+      const body: any = response?.body;
+      if (body && typeof body === "object") {
+        setStats({
+          total_labor: Number(body.total_labor) || 0,
+          total_parts: Number(body.total_parts) || 0,
+          total_revenue: Number(body.total_revenue) || 0,
+          total_payments: Number(body.total_payments) || 0,
+        });
       }
-    } catch (error) {
-      // Silencioso: no bloquear la UI si fallan las stats
+    } catch {
+      // Silencioso: si fallan las stats se conservan los totales de la lista
     }
-  }, [filters.date_from, filters.date_to]);
+  }, [applied.date_from, applied.date_to]);
 
   useEffect(() => {
     fetchPayments();
-    fetchStats();
-  }, [fetchPayments, fetchStats]);
+  }, [fetchPayments]);
 
   const handleFilterChange = (key: string, value: string) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
-    if (key !== "preset") {
-      setFilters((prev) => ({ ...prev, preset: "custom" }));
-    }
+    setDraft((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const applyFilters = () => {
     setPagination((prev) => ({ ...prev, current_page: 1 }));
+    setApplied({ date_from: draft.date_from, date_to: draft.date_to });
+    // Stats solo se piden al aplicar el filtro (con las fechas del borrador)
+    fetchStats(draft.date_from, draft.date_to);
   };
 
   const clearFilters = () => {
-    setFilters({ preset: "month", date_from: "", date_to: "", method: "" });
-    const { from, to } = computeDatesFromPreset("month");
-    setFilters((prev) => ({ ...prev, date_from: from, date_to: to }));
+    const fresh = { preset: "month" as DateRangePreset, date_from: "", date_to: "" };
+    setDraft(fresh);
     setPagination((prev) => ({ ...prev, current_page: 1 }));
+    setApplied({ date_from: "", date_to: "" });
   };
 
   const handleExport = async () => {
     try {
       // Reutilizar api.getPayments con per_page grande para exportar
       const response = await api.getPayments({
-        date_from: filters.date_from || undefined,
-        date_to: filters.date_to || undefined,
-        method: filters.method || undefined,
+        date_from: applied.date_from || undefined,
+        date_to: applied.date_to || undefined,
         per_page: 10000,
         page: 1,
       });
-      if (!response.body?.data?.length) {
+      const raw: any = response;
+      const list: PaymentRow[] = Array.isArray(raw?.body)
+        ? raw.body
+        : Array.isArray(raw?.body?.data)
+          ? raw.body.data
+          : [];
+      if (!list.length) {
         enqueueSnackbar("No hay datos para exportar", { variant: "warning" });
         return;
       }
 
       // Generar CSV
-      const headers = ["ID", "Fecha", "Orden", "Cliente", "Vehículo", "Mano de obra", "Repuestos", "Total", "Método", "Referencia", "Notas"];
-      const rows = response.body.data.map((p: any) => [
+      const headers = ["ID", "Fecha", "Orden", "Mano de obra", "Repuestos", "Total"];
+      const rows = list.map((p) => [
         p.id,
-        p.paid_at?.split(" ")[0] || "",
+        (p.created_at || p.paid_at || "").split(" ")[0] || "",
         p.order_id || "",
-        p.order?.customer_name || "",
-        p.order?.vehicle_plate || "",
         p.labor_amount,
         p.parts_amount,
         p.total_amount,
-        p.payment_method,
-        p.reference || "",
-        p.notes || "",
       ]);
       const csv = [headers, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
 
@@ -179,27 +214,12 @@ function AdminPaymentsPage() {
       const link = document.createElement("a");
       link.href = url;
       const dateStr = new Date().toISOString().split("T")[0];
-      link.download = `pagos_${filters.date_from}_a_${filters.date_to}_${dateStr}.csv`;
+      link.download = `pagos_${dateStr}.csv`;
       link.click();
       URL.revokeObjectURL(url);
       enqueueSnackbar("Exportación completada", { variant: "success" });
     } catch (error) {
       enqueueSnackbar("Error al exportar", { variant: "error" });
-    }
-  };
-
-  const getMethodBadge = (method: string) => {
-    switch (method) {
-      case "cash":
-        return <CustomBadge variant="success" className="text-xs">Efectivo</CustomBadge>;
-      case "card":
-        return <CustomBadge variant="info" className="text-xs">Tarjeta</CustomBadge>;
-      case "transfer":
-        return <CustomBadge variant="neutral" className="text-xs">Transferencia</CustomBadge>;
-      case "other":
-        return <CustomBadge variant="neutral" className="text-xs">Otro</CustomBadge>;
-      default:
-        return <CustomBadge variant="neutral" className="text-xs">{method}</CustomBadge>;
     }
   };
 
@@ -213,21 +233,6 @@ function AdminPaymentsPage() {
       minute: "2-digit",
     });
   };
-
-  const presetOptions = [
-    { value: "today", label: "Hoy" },
-    { value: "week", label: "Última semana" },
-    { value: "month", label: "Este mes" },
-    { value: "custom", label: "Rango personalizado" },
-  ];
-
-  const methodOptions = [
-    { value: "", label: "Todos" },
-    { value: "cash", label: "Efectivo" },
-    { value: "card", label: "Tarjeta" },
-    { value: "transfer", label: "Transferencia" },
-    { value: "other", label: "Otro" },
-  ];
 
   return (
     <Layout>
@@ -244,11 +249,11 @@ function AdminPaymentsPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-                        <CustomButton variant="secondary" size="sm" onClick={handleExport} leftIcon={<Download className="h-4 w-4" />}>Exportar CSV</CustomButton>
+            <CustomButton variant="secondary" size="sm" onClick={handleExport} leftIcon={<Download className="h-4 w-4" />}>Exportar CSV</CustomButton>
           </div>
         </div>
 
-        {/* Total de ingresos - Card principal */}
+        {/* Totales - Card principal */}
         <CustomCard className="mb-6 bg-gradient-to-r from-brand-600 to-brand-700 text-white">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             <div>
@@ -266,25 +271,6 @@ function AdminPaymentsPage() {
             <div>
               <p className="text-sm font-medium text-brand-100">Ingreso Total</p>
               <p className="mt-1 text-2xl sm:text-3xl font-extrabold">{formatCOP(stats.total_revenue)}</p>
-            </div>
-          </div>
-
-          {/* Desglose por método */}
-          <div className="mt-6 pt-6 border-t border-brand-500">
-            <h3 className="text-sm font-semibold text-brand-100 mb-3">Por método de pago</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-              {[
-                { key: "cash", label: "Efectivo", color: "text-green-300" },
-                { key: "card", label: "Tarjeta", color: "text-blue-300" },
-                { key: "transfer", label: "Transferencia", color: "text-slate-300" },
-                { key: "other", label: "Otro", color: "text-amber-300" },
-              ].map((m) => (
-                <div key={m.key} className="bg-brand-800/50 rounded-lg p-3">
-                  <p className={`font-medium ${m.color}`}>{m.label}</p>
-                  <p className="font-bold text-white">{formatCOP(stats.by_method[m.key]?.amount || 0)}</p>
-                  <p className="text-xs text-brand-200">({stats.by_method[m.key]?.count || 0} pagos)</p>
-                </div>
-              ))}
             </div>
           </div>
         </CustomCard>
@@ -307,11 +293,11 @@ function AdminPaymentsPage() {
           </div>
 
           {showFilters && (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div>
                 <label className="mb-1.5 block text-sm font-semibold text-slate-700">Rango de fechas</label>
                 <CustomSelect
-                  value={filters.preset}
+                  value={draft.preset}
                   onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleFilterChange("preset", e.target.value)}
                   options={[
                     { value: "today", label: "Hoy" },
@@ -322,38 +308,29 @@ function AdminPaymentsPage() {
                 />
               </div>
 
-              {filters.preset === "custom" && (
+              {draft.preset === "custom" && (
                 <>
                   <CustomInput
                     label="Fecha inicio"
                     type="date"
-                    value={filters.date_from}
+                    value={draft.date_from}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFilterChange("date_from", e.target.value)}
                   />
                   <CustomInput
                     label="Fecha fin"
                     type="date"
-                    value={filters.date_to}
+                    value={draft.date_to}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFilterChange("date_to", e.target.value)}
                   />
                 </>
               )}
 
-              <CustomSelect
-                label="Método de pago"
-                value={filters.method}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleFilterChange("method", e.target.value)}
-                options={[
-                  { value: "", label: "Todos" },
-                  { value: "cash", label: "Efectivo" },
-                  { value: "card", label: "Tarjeta" },
-                  { value: "transfer", label: "Transferencia" },
-                  { value: "other", label: "Otro" },
-                ]}
-              />
-
-              <div className="sm:col-span-2 lg:col-span-1 flex items-end">
-                <CustomButton variant="secondary" onClick={clearFilters} className="w-full">
+              <div className="flex items-end gap-2">
+                <CustomButton onClick={applyFilters} className="flex-1">
+                  <Filter className="h-4 w-4 mr-2" />
+                  Aplicar
+                </CustomButton>
+                <CustomButton variant="secondary" onClick={clearFilters}>
                   <X className="h-4 w-4 mr-2" />
                   Limpiar
                 </CustomButton>
@@ -384,26 +361,27 @@ function AdminPaymentsPage() {
                       <th className="pb-3 px-4">Orden</th>
                       <th className="pb-3 px-4 hidden md:table-cell">Cliente</th>
                       <th className="pb-3 px-4 hidden lg:table-cell">Vehículo</th>
-                      <th className="pb-3 px-4">Mano de obra</th>
-                      <th className="pb-3 px-4">Repuestos</th>
-                      <th className="pb-3 px-4">Total</th>
-                      <th className="pb-3 px-4">Método</th>
-                      <th className="pb-3 px-4 hidden md:table-cell">Referencia</th>
+                      <th className="pb-3 px-4 text-right">Mano de obra</th>
+                      <th className="pb-3 px-4 text-right">Repuestos</th>
+                      <th className="pb-3 px-4 text-right">Total</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
                     {payments.map((p) => (
-                      <tr key={p.id} className="hover:bg-slate-50">
+                      <tr
+                        key={p.id}
+                        className="cursor-pointer hover:bg-brand-50/40"
+                        onClick={() => p.order_id && router.push(`/admin/order-detail?order-id=${p.order_id}`)}
+                        title={`Ver orden #${p.order_id}`}
+                      >
                         <td className="py-3 px-4 text-slate-500 font-mono">#{p.id}</td>
-                        <td className="py-3 px-4">{formatDate(p.paid_at)}</td>
+                        <td className="py-3 px-4">{formatDate(p.created_at || p.paid_at || "")}</td>
                         <td className="py-3 px-4 font-semibold text-slate-800">#{p.order_id}</td>
-                        <td className="py-3 px-4 hidden md:table-cell">{p.order?.customer_name || ""}</td>
-                        <td className="py-3 px-4 hidden lg:table-cell">{p.order?.vehicle_plate || ""}</td>
+                        <td className="py-3 px-4 hidden md:table-cell">{p.order?.customer_name || "-"}</td>
+                        <td className="py-3 px-4 hidden lg:table-cell">{p.order?.vehicle_plate || "-"}</td>
                         <td className="py-3 px-4 text-right">{formatCOP(p.labor_amount)}</td>
                         <td className="py-3 px-4 text-right">{formatCOP(p.parts_amount)}</td>
                         <td className="py-3 px-4 text-right font-bold text-brand-600">{formatCOP(p.total_amount)}</td>
-                        <td className="py-3 px-4">{getMethodBadge(p.payment_method)}</td>
-                        <td className="py-3 px-4 hidden md:table-cell text-slate-500">{p.reference || "-"}</td>
                       </tr>
                     ))}
                   </tbody>

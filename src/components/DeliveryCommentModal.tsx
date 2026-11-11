@@ -115,6 +115,13 @@ export function DeliveryCommentModal({
             Guardar
           </CustomButton>
         </div>
+
+        {/* Aviso: una vez confirmado, la orden queda bloqueada (solo lectura) */}
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs text-amber-800">
+          {target === "delivered"
+            ? "Una vez entregada, la orden no podrá editarse."
+            : "Una vez cancelada, la orden no podrá editarse."}
+        </p>
       </div>
     </CustomDialog>
   );
