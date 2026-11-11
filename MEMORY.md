@@ -28,6 +28,15 @@ Memoria del proyecto entre sesiones. Máximo ~50 líneas: resume o elimina lo qu
 - `.env.local`: `NEXT_PUBLIC_API_BASE_URL=http://localhost`, `NEXT_PUBLIC_PORTAL_URL=http://localhost:3000`.
 - `npm run build` pasa. `npm run typecheck` pasa. `npm run lint` no (ESLint no configurado, preexistente).
 - **Spec 010 (push notificaciones) — E2E VERIFICADO en Chrome real (backend ya implementado, 200 en los 3 endpoints)**: fixes de esta sesión →
+- **Nueva feature: Entrega con comentario + desglose de precios + tabla de pagos** (3 partes):
+  1. `DeliveryCommentModal` (`src/components/DeliveryCommentModal.tsx`) — modal reutilizable para comentario obligatorio en entregado/cancelado. Usado en `AdminOrderDetail` y `TechnicianOrderDetail` (eliminado código inline duplicado).
+  2. `PriceBreakdown` (`src/components/PriceBreakdown.tsx`) — muestra subtotal repuestos (solo `accepted` con precio), subtotal mano de obra (`service_items`), y total. Se renderiza **solo cuando status === "delivered"** en ambas vistas.
+  3. Backend prompt + SQL (`docs/backend-payments-prompt.md`, `docs/sql/011_create_payments_table.sql`): tabla `payments` 1:1 con `orders` (clave única `order_id`), campos `labor_amount`, `parts_amount`, `total_amount`, `payment_method`, `reference`, `notes`, `created_at`. Idempotente: al entregar, si no existe pago, se crea calculando `labor_amount` = suma `service_items.price`, `parts_amount` = suma `parts.quantity * unit_price` **solo repuestos `accepted`**, `total_amount` = suma de ambos.
+- **Nueva feature: Tickets Soporte/Sugerencias** (en specs pendiente):
+  - Backend prompt: `docs/backend-tickets-prompt.md` (endpoints, reglas, tabla `ticket_replies` para hilos)
+  - SQL: `docs/sql/012_create_tickets_tables.sql` (tablas `tickets` + `ticket_replies`, FK a users, índices para filtros)
+  - Frontend pendiente: sidebar "Soporte/Sugerencia" → page crear ticket (título + descripción, JWT user), page admin (lista con filtros estado/categoría/fecha + detalle + responder + cambiar estado)
+- Componentes nuevos: `DeliveryCommentModal`, `PriceBreakdown`.
   1. `isPushSupported()` usaba `'pushManager' in navigator.serviceWorker` (SIEMPRE false; `pushManager` vive en la REGISTRAción). Fix: `'PushManager' in window`.
   2. "Ejecutar Todo" del debugger no hacía nada: closures obsoletos de `isRunning` + función duplicada `runAllSteps`. Fix: secuencia con `cancelRef` (useRef), para ante el primer error.
   3. Pasos 4–6 del debugger usaban `localStorage.getItem('token')`/`userId` (nunca existen; el JWT vive SOLO en cookie) → `Bearer null` 401. Fix: cliente `api` (`pushPublicKey/pushSubscribe`) + `userRef.current?.id`.

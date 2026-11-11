@@ -1,4 +1,4 @@
-import { Car, Users, ClipboardList, LayoutDashboard, History, LucideIcon } from "lucide-react";
+import { Car, Users, ClipboardList, LayoutDashboard, History, MessageSquare, DollarSign, LucideIcon } from "lucide-react";
 
 export interface NavItem {
   href: string;
@@ -25,6 +25,29 @@ export const navigationItems: NavItem[] = [
     icon: History,
     color: "rose",
     adminOnly: true,
+  },
+  {
+    href: "/admin/tickets",
+    label: "Tickets (Admin)",
+    description: "Gestión de soporte y sugerencias",
+    icon: MessageSquare,
+    color: "blue",
+    adminOnly: true,
+  },
+  {
+    href: "/admin/payments",
+    label: "Pagos",
+    description: "Historial y totales de ingresos",
+    icon: DollarSign,
+    color: "emerald",
+    adminOnly: true,
+  },
+  {
+    href: "/support/create",
+    label: "Soporte / Sugerencia",
+    description: "Crear un ticket de ayuda",
+    icon: MessageSquare,
+    color: "emerald",
   },
   {
     href: "/reception/checkin",

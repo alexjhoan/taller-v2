@@ -12,11 +12,11 @@ import { toNumericIdArray } from '@/utils/ids';
  */
 export const STATUS_FILTER_STORAGE_KEY = 'work_orders_status_filter';
 
-/** Valor por defecto la primera vez que se carga (sin selección guardada). */
-export const DEFAULT_STATUS_FILTER = 'in_progress';
-
 /** Valor del primer item del select: "Todos" (sin filtro). */
 export const ALL_STATUSES_VALUE = 'all';
+
+/** Valor por defecto la primera vez que se carga (sin selección guardada). */
+export const DEFAULT_STATUS_FILTER = ALL_STATUSES_VALUE;
 
 export interface OrderStatusOption {
   value: string;
@@ -55,14 +55,18 @@ interface StorageLike {
 /**
  * Lee la selección persistida en localStorage.
  * Si no hay nada guardado (primera visita) o el valor no es válido,
- * devuelve DEFAULT_STATUS_FILTER ('in_progress').
+ * devuelve DEFAULT_STATUS_FILTER ('all' = Todos).
+ *
+ * Migración: 'in_progress' fue el default hasta ahora, así que un valor
+ * guardado con ese valor no fue una elección del usuario → se trata como
+ * sin selección (Todos) sin reescribir el storage.
  * Nunca lanza: acepta storage null (SSR) o que lance (modo privado).
  */
 export function readStatusFilter(storage: StorageLike | null | undefined): string {
   if (!storage) return DEFAULT_STATUS_FILTER;
   try {
     const stored = storage.getItem(STATUS_FILTER_STORAGE_KEY);
-    if (stored && VALID_STATUS_VALUES.has(stored)) return stored;
+    if (stored && VALID_STATUS_VALUES.has(stored) && stored !== 'in_progress') return stored;
     return DEFAULT_STATUS_FILTER;
   } catch {
     return DEFAULT_STATUS_FILTER;

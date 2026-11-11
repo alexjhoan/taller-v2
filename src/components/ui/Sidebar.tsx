@@ -4,7 +4,7 @@ import { useRouter } from "next/router";
 import { ChevronLeft, ChevronRight, LogOut, Wrench, X, Bell, Zap } from "lucide-react";
 import { useUserContext } from "@/context/UserContext";
 import { navigationItems } from "@/utils/navigation";
-import { api } from "@/services/api";
+import { api, apiGetVersionApp } from "@/services/api";
 import { useSnackbar } from "notistack";
 
 interface SidebarProps {
@@ -21,6 +21,18 @@ export function Sidebar({ isCollapsed, onToggleCollapse, isDrawerOpen, onCloseDr
   const { user, logout } = useUserContext();
   const { enqueueSnackbar } = useSnackbar();
   const [isSendingTestPush, setIsSendingTestPush] = useState(false);
+  // Versión de la app que reporta el backend (ej. "0.0.5") para el pie del sidebar
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    apiGetVersionApp().then((v) => {
+      if (active && v) setAppVersion(v);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Test push notification button (solo admins)
   const isAdmin = user?.role === 'admin';
@@ -201,6 +213,16 @@ export function Sidebar({ isCollapsed, onToggleCollapse, isDrawerOpen, onCloseDr
           </div>
           {!isCollapsed && <span className='text-[13px] font-semibold'>Cerrar Sesión</span>}
         </button>
+
+        {/* Versión de la app (del backend), pie del sidebar */}
+        {appVersion && (
+          <p
+            className={`text-[11px] text-slate-400 ${isCollapsed ? "text-center" : "pl-2.5"}`}
+            title={`Versión del backend: ${appVersion}`}
+          >
+            v{appVersion}
+          </p>
+        )}
       </div>
     </aside>
   );

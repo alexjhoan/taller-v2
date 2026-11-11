@@ -167,6 +167,80 @@ export const api = {
     apiRequest<void>(endpoints.pushSubscribe, { method: 'POST', body: payload }),
   pushUnsubscribe: (endpoint: string) =>
     apiRequest<void>(endpoints.pushUnsubscribe, { method: 'POST', body: { endpoint } }),
+
+  // Tickets de soporte/sugerencias
+  getTickets: (params?: {
+    page?: number; per_page?: number;
+    status?: string; category?: string;
+    date_from?: string; date_to?: string; search?: string;
+  }) => {
+    const query = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== '') query.append(k, String(v));
+      });
+    }
+    const qs = query.toString();
+    return apiRequest<{
+      status: number;
+      body: { data: any[]; pagination: any };
+      statusText: string;
+    }>(`${endpoints.tickets}${qs ? '?' + query.toString() : ''}`, { method: 'GET' });
+  },
+  getTicket: (id: number) =>
+    apiRequest<{ status: number; body: any; statusText: string }>(endpoints.ticket(id), { method: 'GET' }),
+  createTicket: (payload: { title: string; description: string; category?: string }) =>
+    apiRequest<{ status: number; body: any; statusText: string }>(endpoints.tickets, { method: 'POST', body: payload }),
+  updateTicket: (id: number, payload: { status?: string; category?: string; assigned_admin_id?: number | null }) =>
+    apiRequest<{ status: number; body: any; statusText: string }>(endpoints.ticket(id), { method: 'PATCH', body: payload }),
+  replyTicket: (id: number, message: string) =>
+    apiRequest<{ status: number; body: any; statusText: string }>(endpoints.ticketReply(id), { method: 'POST', body: { message } }),
+
+  // Pagos
+  getPayments: (params?: {
+    page?: number; per_page?: number;
+    date_from?: string; date_to?: string; method?: string;
+  }) => {
+    const query = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== '') query.append(k, String(v));
+      });
+    }
+    const qs = query.toString();
+    return apiRequest<{
+      status: number;
+      body: { data: any[]; pagination: any };
+      statusText: string;
+    }>(`${endpoints.payments}${qs ? '?' + query.toString() : ''}`, { method: 'GET' });
+  },
+  getPaymentStats: (params?: {
+    date_from?: string; date_to?: string;
+  }) => {
+    const query = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== '') query.append(k, String(v));
+      });
+    }
+    const qs = query.toString();
+    return apiRequest<{
+      status: number;
+      body: {
+        total_labor: number;
+        total_parts: number;
+        total_revenue: number;
+        total_payments: number;
+        by_method: {
+          cash: { amount: number; count: number };
+          card: { amount: number; count: number };
+          transfer: { amount: number; count: number };
+          other: { amount: number; count: number };
+        };
+      };
+      statusText: string;
+    }>(`${endpoints.paymentsStats}${qs ? '?' + query.toString() : ''}`, { method: 'GET' });
+  },
 };
 
 // --- Endpoints específicos ---
@@ -215,6 +289,15 @@ export const endpoints = {
   pushPublicKey: '/api/push/public-key',
   pushSubscribe: '/api/push/subscribe',
   pushUnsubscribe: '/api/push/unsubscribe',
+
+  // Tickets de soporte/sugerencias
+  tickets: '/api/tickets',
+  ticket: (id: number) => `/api/tickets/${id}`,
+  ticketReply: (id: number) => `/api/tickets/${id}/reply`,
+
+  // Pagos
+  payments: '/api/payments',
+  paymentsStats: '/api/payments/stats',
 };
 
 /**

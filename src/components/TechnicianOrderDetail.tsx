@@ -31,6 +31,8 @@ import { EvidenceGallery } from "@/components/EvidenceGallery";
 import { useUserContext } from "@/context/UserContext";
 import { generateShortUid } from "@/utils/uid";
 import { assignFallbackPartIds, canTechnicianDeletePart, serializeParts } from "@/utils/parts";
+import { DeliveryCommentModal } from "@/components/DeliveryCommentModal";
+import { PriceBreakdown } from "@/components/PriceBreakdown";
 
 // --- Componente ---
 
@@ -127,10 +129,12 @@ export function TechnicianOrderDetail({ order, onBack }: TechnicianOrderDetailPr
   const [checkItemNotes, setCheckItemNotes] = useState("");
   const [isCheckItemNotesModalOpen, setIsCheckItemNotesModalOpen] = useState(false);
   // Modal de confirmación para Entregado / Cancelado (requiere comentario).
-  // Mientras esté abierto, NO se persiste nada: solo Cancelar o Guardar.
+  // El contenido (textarea + botones) vive en DeliveryCommentModal;
+  // aquí solo guardamos qué estado se está confirmando y si está guardando.
   const [commentTarget, setCommentTarget] = useState<"delivered" | "cancelled" | null>(null);
-  const [comment, setComment] = useState("");
   const [isCommentSaving, setIsCommentSaving] = useState(false);
+  // Comentario local para el modal de entrega/cancelación
+  const [closeOrderComment, setCloseOrderComment] = useState("");
   // Comentario de entrega/cancelación: se sincroniza con la orden y se
   // actualiza localmente tras guardar para reflejarlo sin recargar.
   const [withdrawalComment, setWithdrawalComment] = useState<string | null>(order.withdrawal_comment ?? null);
@@ -311,23 +315,22 @@ export function TechnicianOrderDetail({ order, onBack }: TechnicianOrderDetailPr
     setCheckItemNotes("");
   };
 
-  // --- Entrega / Cancelación con comentario ---
+  // --- Entrega / Cancelación con comentario (usa DeliveryCommentModal) ---
 
   const openCommentModal = (status: string) => {
     if (status !== "delivered" && status !== "cancelled") return;
     setCommentTarget(status);
-    setComment("");
+    setCloseOrderComment("");
   };
 
   const closeCommentModal = () => {
     setCommentTarget(null);
-    setComment("");
   };
 
   // Persiste el cambio de estado + comentario. Solo cierra el modal si el
   // PATCH es exitoso; en error permanece abierto.
   const handleCommentSave = async () => {
-    if (!commentTarget) return;
+    if (!commentTarget || !closeOrderComment.trim()) return;
 
     setIsCommentSaving(true);
     try {
@@ -336,7 +339,7 @@ export function TechnicianOrderDetail({ order, onBack }: TechnicianOrderDetailPr
         {
           id: order.id,
           status: commentTarget,
-          withdrawal_comment: comment,
+          withdrawal_comment: closeOrderComment,
         },
         {
           successMessage:
@@ -345,7 +348,7 @@ export function TechnicianOrderDetail({ order, onBack }: TechnicianOrderDetailPr
       );
 
       setStatus(commentTarget);
-      setWithdrawalComment(comment);
+      setWithdrawalComment(closeOrderComment);
       closeCommentModal();
     } catch {
       // El error ya se muestra globalmente (apiClient)
@@ -643,6 +646,11 @@ export function TechnicianOrderDetail({ order, onBack }: TechnicianOrderDetailPr
         </div> */}
       </CustomCard>
 
+      {/* Desglose de precios (solo cuando la orden está entregada) */}
+      {status === "delivered" && (
+        <PriceBreakdown parts={parts} serviceItems={[]} />
+      )}
+
       {/* Checklist de Ejecución - EDITABLE */}
       <CustomCard>
         <div className='mb-4 flex items-center justify-between'>
@@ -881,43 +889,16 @@ export function TechnicianOrderDetail({ order, onBack }: TechnicianOrderDetailPr
         </form>
       </CustomDialog>
 
-      {/* Modal de confirmación de entrega/cancelación (con comentario) */}
-      <CustomDialog
+      {/* Modal de confirmación de entrega/cancelación (con comentario) — componente separado */}
+      <DeliveryCommentModal
         open={commentTarget !== null}
         onClose={closeCommentModal}
-        title={commentTarget === "delivered" ? "Confirmar entrega" : "Confirmar cancelación"}
-      >
-        <div className='space-y-4'>
-          <div>
-            <label className='mb-1.5 block text-sm font-semibold text-slate-700'>Comentario</label>
-            <textarea
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              rows={4}
-              className='input-field resize-none'
-              placeholder={
-                commentTarget === "delivered"
-                  ? "Ej: Vehículo retirado por el cliente. Se explicaron las reparaciones realizadas."
-                  : "Ej: El cliente canceló el servicio por motivos personales."
-              }
-            />
-          </div>
-          <div className='flex gap-3'>
-            <CustomButton type='button' variant='secondary' className='flex-1' onClick={closeCommentModal}>
-              Cancelar
-            </CustomButton>
-            <CustomButton
-              type='button'
-              className='flex-1'
-              onClick={handleCommentSave}
-              isLoading={isCommentSaving}
-              disabled={isCommentSaving}
-            >
-              Guardar
-            </CustomButton>
-          </div>
-        </div>
-      </CustomDialog>
+        onSave={handleCommentSave}
+        isSaving={isCommentSaving}
+        target={commentTarget as "delivered" | "cancelled"}
+        commentValue={closeOrderComment}
+        onCommentChange={setCloseOrderComment}
+      />
 
       {/* Modal para editar notas del checklist item */}
       <CustomDialog

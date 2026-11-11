@@ -15,6 +15,8 @@ import {
   Play,
   MessageSquare,
   Maximize2,
+  CircleDot,
+  Square,
 } from "lucide-react";
 import { useEvidenceUpload, EVIDENCE_ACCEPT } from "@/hooks/useEvidenceUpload";
 import { CustomButton } from "@/components/ui/CustomButton";
@@ -95,6 +97,14 @@ export function EvidenceUploader({
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
+  // Camera mode: 'photo' | 'video'
+  const [cameraMode, setCameraMode] = useState<"photo" | "video">("photo");
+  // Video recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -295,6 +305,85 @@ export function EvidenceUploader({
     );
   }, [addFiles, onFilesSelected]);
 
+  // --- Video Recording Functions ---
+  const startRecording = useCallback(() => {
+    if (!cameraStreamRef.current) return;
+
+    navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      .then((audioStream) => {
+        const combinedStream = new MediaStream([
+          ...cameraStreamRef.current!.getVideoTracks(),
+          ...audioStream.getAudioTracks(),
+        ]);
+
+        const mimeType = MediaRecorder.isTypeSupported("video/mp4")
+          ? "video/mp4"
+          : MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
+          ? "video/webm;codecs=vp9"
+          : "video/webm";
+
+        const recorder = new MediaRecorder(combinedStream, { mimeType });
+        mediaRecorderRef.current = recorder;
+        recordedChunksRef.current = [];
+
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+        };
+
+        recorder.onstop = () => {
+          const blob = new Blob(recordedChunksRef.current, { type: mimeType });
+          const ext = mimeType.includes("mp4") ? "mp4" : "webm";
+          const file = new File([blob], `camera-${Date.now()}.${ext}`, { type: mimeType });
+          addFiles([file]);
+          onFilesSelected?.([file]);
+          closeCameraModal();
+        };
+
+        recorder.start(1000);
+        setIsRecording(true);
+        setRecordingTime(0);
+        recordingTimerRef.current = setInterval(() => setRecordingTime((t) => t + 1), 1000);
+      })
+      .catch(() => {
+        const mimeType = MediaRecorder.isTypeSupported("video/mp4")
+          ? "video/mp4"
+          : "video/webm";
+
+        const recorder = new MediaRecorder(cameraStreamRef.current!, { mimeType });
+        mediaRecorderRef.current = recorder;
+        recordedChunksRef.current = [];
+
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+        };
+
+        recorder.onstop = () => {
+          const blob = new Blob(recordedChunksRef.current, { type: mimeType });
+          const ext = mimeType.includes("mp4") ? "mp4" : "webm";
+          const file = new File([blob], `camera-${Date.now()}.${ext}`, { type: mimeType });
+          addFiles([file]);
+          onFilesSelected?.([file]);
+          closeCameraModal();
+        };
+
+        recorder.start(1000);
+        setIsRecording(true);
+        setRecordingTime(0);
+        recordingTimerRef.current = setInterval(() => setRecordingTime((t) => t + 1), 1000);
+      });
+  }, [addFiles, onFilesSelected]);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      setIsRecording(false);
+    }
+  }, [isRecording]);
+
   const openCameraModal = useCallback(() => {
     setIsCameraModalOpen(true);
     // Start camera after modal opens (to ensure video element is mounted)
@@ -410,7 +499,7 @@ export function EvidenceUploader({
               onClick={openCameraModal}
               disabled={isUploading && !selectionOnly}
             >
-              Tomar foto con cámara
+              Cámara (Foto/Video)
             </CustomButton>
             <CustomButton
               type='button'
@@ -572,7 +661,7 @@ export function EvidenceUploader({
       )}
 
       {/* Camera Modal */}
-      <CustomDialog open={isCameraModalOpen} onClose={closeCameraModal} title='Tomar foto con cámara' maxWidth='md'>
+      <CustomDialog open={isCameraModalOpen} onClose={closeCameraModal} title={cameraMode === "photo" ? "Tomar foto con cámara" : "Grabar video con cámara"} maxWidth='md'>
         <div className='space-y-4'>
           {cameraError && (
             <div className='rounded-lg bg-red-50 p-3 text-sm text-red-700' role='alert'>
@@ -593,6 +682,28 @@ export function EvidenceUploader({
             </div>
           )}
 
+          {/* Photo/Video Mode Toggle */}
+          <div className='flex items-center justify-center gap-2'>
+            <CustomButton
+              variant={cameraMode === "photo" ? "primary" : "secondary"}
+              size='sm'
+              onClick={() => setCameraMode("photo")}
+              disabled={isRecording}
+            >
+              <Camera className='h-4 w-4' />
+              <span>Foto</span>
+            </CustomButton>
+            <CustomButton
+              variant={cameraMode === "video" ? "primary" : "secondary"}
+              size='sm'
+              onClick={() => setCameraMode("video")}
+              disabled={isRecording}
+            >
+              <Video className='h-4 w-4' />
+              <span>Video</span>
+            </CustomButton>
+          </div>
+
           <div className='relative aspect-video bg-black rounded-lg overflow-hidden'>
             <video ref={videoRef} className='w-full h-full object-cover' autoPlay playsInline muted />
             {!cameraStream && !cameraError && (
@@ -606,6 +717,13 @@ export function EvidenceUploader({
                 <AlertCircle className='h-8 w-8' />
               </div>
             )}
+            {/* Recording indicator overlay */}
+            {isRecording && (
+              <div className='absolute top-3 left-3 flex items-center gap-1.5 bg-red-600/90 text-white px-2.5 py-1 rounded-full text-xs font-mono'>
+                <CircleDot className='h-4 w-4 animate-pulse' />
+                <span>{String(Math.floor(recordingTime / 60)).padStart(2, "0")}:{String(recordingTime % 60).padStart(2, "0")}</span>
+              </div>
+            )}
           </div>
 
           <canvas ref={canvasRef} className='hidden' />
@@ -615,26 +733,54 @@ export function EvidenceUploader({
               variant='secondary'
               size='sm'
               onClick={switchCamera}
-              disabled={!cameraStream}
+              disabled={!cameraStream || isRecording}
               aria-label='Cambiar cámara'
               className='p-2'
             >
               <RotateCcw className='h-5 w-5' />
             </CustomButton>
-            <CustomButton
-              type='button'
-              size='lg'
-              leftIcon={<Camera className='h-5 w-5' />}
-              onClick={capturePhoto}
-              disabled={!cameraStream || (isUploading && !selectionOnly)}
-              className='min-w-[160px]'
-            >
-              Capturar
-            </CustomButton>
+            {cameraMode === "photo" ? (
+              <CustomButton
+                type='button'
+                size='lg'
+                leftIcon={<Camera className='h-5 w-5' />}
+                onClick={capturePhoto}
+                disabled={!cameraStream || isRecording || (isUploading && !selectionOnly)}
+                className='min-w-[160px]'
+              >
+                Capturar
+              </CustomButton>
+            ) : (
+              <>
+                {!isRecording ? (
+                  <CustomButton
+                    type='button'
+                    size='lg'
+                    leftIcon={<CircleDot className='h-5 w-5' />}
+                    onClick={startRecording}
+                    disabled={!cameraStream || (isUploading && !selectionOnly)}
+                    className='min-w-[160px] bg-red-600 hover:bg-red-700 ring-2 ring-red-500/50'
+                  >
+                    Grabar
+                  </CustomButton>
+                ) : (
+                  <CustomButton
+                    type='button'
+                    size='lg'
+                    leftIcon={<Square className='h-5 w-5' />}
+                    onClick={stopRecording}
+                    className='min-w-[160px] bg-red-600 hover:bg-red-700'
+                  >
+                    Detener
+                  </CustomButton>
+                )}
+              </>
+            )}
             <CustomButton
               variant='secondary'
               size='sm'
               onClick={closeCameraModal}
+              disabled={isRecording}
               aria-label='Cerrar cámara'
               className='p-2'
             >
@@ -642,7 +788,11 @@ export function EvidenceUploader({
             </CustomButton>
           </div>
 
-          <p className='text-center text-xs text-slate-400'>La foto se guardará como JPG (calidad 90%)</p>
+          <p className='text-center text-xs text-slate-400'>
+            {cameraMode === "photo"
+              ? "La foto se guardará como JPG (calidad 90%)"
+              : "El video se guardará como MP4/WebM (con audio si se permite)"}
+          </p>
         </div>
       </CustomDialog>
 

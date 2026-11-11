@@ -14,6 +14,8 @@
 [x] alertas para el mecanico, como puedo hacer para que el mecanico, cada lectura de cada alerta sea personal que si la lee un admin no aparesca leida en el perfil del mecanico? ademas la vista de alertas se debe ver, pero solo las alertas que corresponden a ese mecanico, un admin si puede ver todas las alertas
 
 
+[] que el front pase las horas de la db a la hora local
+
 
 
 son 2 aprobacion primero del trabajo y 2do respuestos
